@@ -2,7 +2,11 @@ import requests
 import paramiko
 from server_monitoring.config import THRESHOLDS, TELEGRAM_BOT_TOKEN, AUTOHEAL_CPU
 
-def check_alerts(cpu, ram, disk, telegram_username=None):
+# Дополнительные пороги
+USER_THRESHOLD = 50
+TEMP_THRESHOLD = 75
+
+def check_alerts(cpu, ram, disk, telegram_username=None, users=None, temp=None):
     alerts = []
     if cpu > THRESHOLDS["cpu"]:
         alerts.append(f"Высокая загрузка CPU: {cpu:.1f}%")
@@ -10,6 +14,10 @@ def check_alerts(cpu, ram, disk, telegram_username=None):
         alerts.append(f"Высокая загрузка RAM: {ram:.1f}%")
     if disk > THRESHOLDS["disk"]:
         alerts.append(f"Мало места на диске: {disk:.1f}% занято")
+    if users is not None and users > USER_THRESHOLD:
+        alerts.append(f"Много пользователей в системе: {users}")
+    if temp is not None and temp > TEMP_THRESHOLD:
+        alerts.append(f"Высокая температура: {temp:.1f}°C")
 
     # Автолечение (демо)
     if cpu > AUTOHEAL_CPU:

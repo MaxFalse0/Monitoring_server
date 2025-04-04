@@ -5,6 +5,7 @@
     <title>Динамический дашборд</title>
     <link rel="stylesheet" href="/static/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
 <h1>Динамический дашборд</h1>
@@ -15,32 +16,37 @@
 
 <p>Пример: ?cpu=1&ram=1&disk=1</p>
 
-<!-- Покажем те же текстовые поля -->
+<!-- Метрики -->
 <div id="metrics-container">
     <h2>Последние метрики:</h2>
-    <!-- CPU -->
     {% if show_cpu %}
       <p>CPU: <span id="cpu" class="metric-value">--</span></p>
     {% endif %}
-    <!-- RAM -->
     {% if show_ram %}
       <p>RAM: <span id="ram" class="metric-value">--</span></p>
     {% endif %}
-    <!-- DISK -->
     {% if show_disk %}
       <p>Disk: <span id="disk" class="metric-value">--</span></p>
     {% endif %}
     <p>Net RX: <span id="net-rx" class="metric-value">--</span></p>
     <p>Net TX: <span id="net-tx" class="metric-value">--</span></p>
+    <p>Пользователи: <span id="users" class="metric-value">--</span></p>
+    <p>Температура: <span id="temp" class="metric-value">--</span></p>
     <p>Последнее обновление: <span id="last-update">Никогда</span></p>
 </div>
 
-<!-- Два канваса -->
+<!-- Графики -->
 <div style="display:flex; flex-wrap:wrap; justify-content:center;">
     <canvas id="metricsChart1" width="400" height="300"></canvas>
     <canvas id="metricsChart2" width="400" height="300"></canvas>
 </div>
 
 <script src="/static/chart.js"></script>
+<!-- Новые графики -->
+<div style="display:flex; flex-wrap:wrap; justify-content:center;">
+    <canvas id="metricsChart3" width="400" height="300"></canvas>
+    <canvas id="metricsChart4" width="400" height="300"></canvas>
+</div>
+
 </body>
 </html>

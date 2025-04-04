@@ -5,6 +5,7 @@
     <title>Мониторинг сервера</title>
     <link rel="stylesheet" href="/static/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
 <h1>Мониторинг сервера (Главная)</h1>
@@ -15,11 +16,10 @@
     <a href="{{ url_for('report') }}">Отчёт</a> |
     <a href="{{ url_for('export_data') }}">Экспорт CSV</a> |
     <a href="{{ url_for('dashboard_custom') }}">Дашборд</a> |
-    <a href="{{ url_for('socketio_test') }}">WebSocket тест</a> |
     <a href="{{ url_for('logout') }}">Выйти</a>
 </nav>
 
-<!-- Форма для быстрого ввода нового IP/PORT/USER/PASS (как раньше) -->
+<!-- Форма подключения вручную -->
 <form method="POST" action="{{ url_for('dashboard') }}">
     <label for="server_ip">IP сервера:</label>
     <input type="text" id="server_ip" name="server_ip" required><br>
@@ -34,7 +34,7 @@
 
 <hr>
 
-<!-- Новый способ: выбрать сервер из списка добавленных -->
+<!-- Подключение из списка -->
 <form method="POST" action="{{ url_for('connect_existing_server') }}">
     <label for="server_id">Выбрать сервер из списка:</label>
     <select id="server_id" name="server_id" required>
@@ -51,6 +51,7 @@
     <p class="error">{{ status.error }}</p>
 {% endif %}
 
+<!-- Метрики -->
 <div id="metrics-container">
     <h2>Последние метрики:</h2>
     <p>CPU: <span id="cpu" class="metric-value">--</span></p>
@@ -58,15 +59,23 @@
     <p>Disk: <span id="disk" class="metric-value">--</span></p>
     <p>Net RX: <span id="net-rx" class="metric-value">--</span></p>
     <p>Net TX: <span id="net-tx" class="metric-value">--</span></p>
+    <p>Пользователи: <span id="users" class="metric-value">--</span></p>
+    <p>Температура: <span id="temp" class="metric-value">--</span></p>
     <p>Последнее обновление: <span id="last-update">Никогда</span></p>
 </div>
 
-<!-- Два канваса для разделённых графиков -->
+<!-- Графики -->
 <div style="display:flex; flex-wrap:wrap; justify-content:center;">
     <canvas id="metricsChart1" width="400" height="300"></canvas>
     <canvas id="metricsChart2" width="400" height="300"></canvas>
 </div>
 
 <script src="/static/chart.js"></script>
+<!-- Новые графики -->
+<div style="display:flex; flex-wrap:wrap; justify-content:center;">
+    <canvas id="metricsChart3" width="400" height="300"></canvas>
+    <canvas id="metricsChart4" width="400" height="300"></canvas>
+</div>
+
 </body>
 </html>

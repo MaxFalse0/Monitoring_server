@@ -6,21 +6,23 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # Таблица метрик
+    # Таблица метрик (добавлено поле user_id)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            user_id INTEGER,
             cpu REAL,
             ram REAL,
             disk REAL,
             net_rx REAL,
-            net_tx REAL
+            net_tx REAL,
+            users INTEGER DEFAULT 0,
+            temp REAL DEFAULT 0.0
         )
     ''')
 
     # Таблица пользователей
-    # Добавляем role (админ/юзер)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +34,7 @@ def init_db():
         )
     ''')
 
-    # Таблица серверов (для многосерверного мониторинга)
+    # Таблица серверов
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS servers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,25 +51,44 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_metrics(cpu, ram, disk, net_rx, net_tx):
+
+def save_metrics(user_id, cpu, ram, disk, net_rx, net_tx, users=0, temp=0.0):
+    """
+    Сохраняем метрику, привязывая к user_id.
+    """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO metrics (cpu, ram, disk, net_rx, net_tx)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (cpu, ram, disk, net_rx, net_tx))
+        INSERT INTO metrics (user_id, cpu, ram, disk, net_rx, net_tx, users, temp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, cpu, ram, disk, net_rx, net_tx, users, temp))
     conn.commit()
     conn.close()
 
-def get_latest_metrics():
+
+def get_latest_metrics(user_id, role):
+    """
+    Возвращает последнюю запись из metrics.
+    - Если admin => показываем самую последнюю по всем пользователям
+    - Если user => только свою
+    """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT cpu, ram, disk, net_rx, net_tx
-        FROM metrics
-        ORDER BY id DESC
-        LIMIT 1
-    ''')
+    if role == 'admin':
+        cursor.execute('''
+            SELECT cpu, ram, disk, net_rx, net_tx, users, temp
+            FROM metrics
+            ORDER BY id DESC
+            LIMIT 1
+        ''')
+    else:
+        cursor.execute('''
+            SELECT cpu, ram, disk, net_rx, net_tx, users, temp
+            FROM metrics
+            WHERE user_id=?
+            ORDER BY id DESC
+            LIMIT 1
+        ''', (user_id,))
     row = cursor.fetchone()
     conn.close()
     if row:
@@ -76,20 +97,12 @@ def get_latest_metrics():
             "ram": row[1],
             "disk": row[2],
             "net_rx": row[3],
-            "net_tx": row[4]
+            "net_tx": row[4],
+            "users": row[5],
+            "temp": row[6]
         }
     return None
 
-def update_user_telegram(user_id, telegram_username):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE users
-        SET telegram_username=?
-        WHERE id=?
-    ''', (telegram_username, user_id))
-    conn.commit()
-    conn.close()
 
 def get_user_by_id(user_id):
     conn = sqlite3.connect(DB_NAME)
@@ -112,6 +125,19 @@ def get_user_by_id(user_id):
         }
     return None
 
+
+def update_user_telegram(user_id, telegram_username):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE users
+        SET telegram_username=?
+        WHERE id=?
+    ''', (telegram_username, user_id))
+    conn.commit()
+    conn.close()
+
+
 def set_twofa_enabled(user_id, enable: bool):
     val = 1 if enable else 0
     conn = sqlite3.connect(DB_NAME)
@@ -124,10 +150,8 @@ def set_twofa_enabled(user_id, enable: bool):
     conn.commit()
     conn.close()
 
+
 def set_user_role(user_id, role):
-    """
-    Пример: admin может назначать роли user -> admin
-    """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''
@@ -149,6 +173,7 @@ def create_server(user_id, name, ip, port, ssh_user, ssh_password):
     ''', (user_id, name, ip, port, ssh_user, ssh_password))
     conn.commit()
     conn.close()
+
 
 def get_servers_for_user(user_id, user_role):
     conn = sqlite3.connect(DB_NAME)
@@ -181,6 +206,7 @@ def get_servers_for_user(user_id, user_role):
         })
     return servers
 
+
 def get_server_by_id(server_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -203,6 +229,7 @@ def get_server_by_id(server_id):
         }
     return None
 
+
 def update_server(server_id, name, ip, port, ssh_user, ssh_password):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -214,6 +241,7 @@ def update_server(server_id, name, ip, port, ssh_user, ssh_password):
     conn.commit()
     conn.close()
 
+
 def delete_server(server_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -223,18 +251,33 @@ def delete_server(server_id):
 
 # ----------- REPORTS & CLEANUP --------------
 
-def get_metrics_for_period(days=1):
+def get_metrics_for_period(user_id, role, days=1):
+    """
+    Достаём метрики за N дней.
+    - Если admin => все
+    - Если user => только свои
+    """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT cpu, ram, disk, timestamp
-        FROM metrics
-        WHERE timestamp >= datetime('now', ?)
-        ORDER BY timestamp ASC
-    ''', (f'-{days} days',))
+    if role == 'admin':
+        cursor.execute('''
+            SELECT cpu, ram, disk, users, temp, timestamp
+            FROM metrics
+            WHERE timestamp >= datetime('now', ?)
+            ORDER BY timestamp ASC
+        ''', (f'-{days} days',))
+    else:
+        cursor.execute('''
+            SELECT cpu, ram, disk, users, temp, timestamp
+            FROM metrics
+            WHERE user_id=?
+              AND timestamp >= datetime('now', ?)
+            ORDER BY timestamp ASC
+        ''', (user_id, f'-{days} days',))
     rows = cursor.fetchall()
     conn.close()
     return rows
+
 
 def cleanup_old_metrics():
     conn = sqlite3.connect(DB_NAME)
@@ -248,14 +291,26 @@ def cleanup_old_metrics():
     conn.close()
     print(f"cleanup_old_metrics: Deleted {deleted} old rows")
 
-def get_all_metrics():
+
+def get_all_metrics(user_id, role):
+    """
+    Для экспорта. Если admin => все, иначе только свои.
+    """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, timestamp, cpu, ram, disk, net_rx, net_tx
-        FROM metrics
-        ORDER BY id ASC
-    ''')
+    if role == 'admin':
+        cursor.execute('''
+            SELECT id, timestamp, cpu, ram, disk, net_rx, net_tx, users, temp
+            FROM metrics
+            ORDER BY id ASC
+        ''')
+    else:
+        cursor.execute('''
+            SELECT id, timestamp, cpu, ram, disk, net_rx, net_tx, users, temp
+            FROM metrics
+            WHERE user_id=?
+            ORDER BY id ASC
+        ''', (user_id,))
     rows = cursor.fetchall()
     conn.close()
     return rows

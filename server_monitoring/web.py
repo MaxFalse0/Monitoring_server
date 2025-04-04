@@ -12,20 +12,23 @@ from server_monitoring import database
 from server_monitoring.analyze import send_telegram_alert
 from server_monitoring.config import TWOFA_CODE_LENGTH, SOCKETIO_CORS_ALLOWED_ORIGINS
 from server_monitoring.config import connection_status
-from server_monitoring.database import get_metrics_for_period, get_all_metrics, get_server_by_id
+from server_monitoring.database import get_metrics_for_period, get_all_metrics, get_server_by_id, get_user_by_id
+from server_monitoring.socketio_manager import socketio
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
-socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_CORS_ALLOWED_ORIGINS)
+socketio.init_app(app, cors_allowed_origins="*")  # или SOCKETIO_CORS_ALLOWED_ORIGINS
+
 
 @app.before_request
 def check_session():
     allowed_routes = (
         "login", "register", "twofa_verify",
-        "static", "export_data",
+        "static", "export_data",  # export_data пусть тоже проверяется => либо убираем
         "socketio_test", "socketio_test_emit"
     )
+    # Если не авторизован => уходим на login
     if request.endpoint not in allowed_routes and "logged_in" not in session:
         if "partial_login" in session and request.endpoint == "twofa_verify":
             return None
@@ -69,7 +72,7 @@ def login():
                 session["role"] = user["role"]
                 return redirect(url_for("dashboard"))
         else:
-            return render_template("login.html", error="Неверный логин/пароль")
+            return render_template("login.html", error="Неверный логин или пароль")
     return render_template("login.html", error=None)
 
 @app.route("/logout")
@@ -77,17 +80,19 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# -------------- Главная страница --------------
+# -------------- Главная страница ("/") --------------
 
 @app.route("/", methods=["GET", "POST"])
 def dashboard():
     """
     Если POST => ручной ввод IP/port/ssh => collect_metrics
-    Если GET => показать список имеющихся серверов, + поля CPU/RAM/...
+    Если GET => показать список серверов + метрики
     """
     global connection_status
+    user_id = session["user_id"]
+    user_role = session["role"]
+
     if request.method == "POST":
-        # Ручной ввод
         server_ip = request.form["server_ip"]
         server_port = int(request.form["server_port"])
         ssh_user = request.form["username"]
@@ -97,30 +102,37 @@ def dashboard():
         connection_status["error"] = None
 
         tg_username = session.get("telegram_username")
+        # Запускаем сбор метрик в отдельном потоке
+        # Передаём user_id, чтобы сохранить метрики "под" этим пользователем
         threading.Thread(
             target=collect_metrics,
-            args=(server_ip, server_port, ssh_user, ssh_password, connection_status, tg_username),
+            args=(server_ip, server_port, ssh_user, ssh_password, connection_status, tg_username, user_id),
             daemon=True
         ).start()
 
         return render_template("index.html",
                                message=connection_status["status"],
                                status=connection_status,
-                               servers=get_user_servers())  # чтобы не потерять список
+                               servers=get_user_servers())
     else:
-        # GET => просто показать список серверов + метрики
+        # GET => вывести список, показать актуальные метрики
         return render_template("index.html",
                                message="Enter server data or select existing server",
                                status=connection_status,
                                servers=get_user_servers())
 
+
 @app.route("/connect_existing_server", methods=["POST"])
 def connect_existing_server():
     """
     Вызывается при выборе сервера из списка (index.html).
-    Находим IP/port/ssh => collect_metrics => вернём на dashboard
+    Используем сохранённые данные (ip,port и т.д.) и запускаем collect_metrics
     """
+    global connection_status
+    user_id = session["user_id"]
+    user_role = session["role"]
     server_id = request.form.get("server_id")
+
     if not server_id:
         return redirect(url_for("dashboard"))
 
@@ -128,15 +140,17 @@ def connect_existing_server():
     if not s:
         return redirect(url_for("dashboard"))
 
-    global connection_status
+    # Проверка: admin видит все, user видит только свои
+    if user_role != "admin" and s["user_id"] != user_id:
+        return "Недостаточно прав для подключения к этому серверу"
+
     connection_status["status"] = "Connecting to existing server..."
     connection_status["error"] = None
 
-    # Запускаем поток
     tg_username = session.get("telegram_username")
     threading.Thread(
         target=collect_metrics,
-        args=(s["ip"], s["port"], s["ssh_user"], s["ssh_password"], connection_status, tg_username),
+        args=(s["ip"], s["port"], s["ssh_user"], s["ssh_password"], connection_status, tg_username, user_id),
         daemon=True
     ).start()
 
@@ -144,20 +158,23 @@ def connect_existing_server():
 
 def get_user_servers():
     """
-    Вспомогательная функция: возвращает список серверов для текущего пользователя
-    или все, если админ
+    Возвращает список серверов для текущего пользователя (или все, если admin)
     """
     if "logged_in" not in session:
         return []
     user_id = session["user_id"]
-    role = session.get("role","user")
+    role = session["role"]
     servers = database.get_servers_for_user(user_id, role)
     return servers
 
 @app.route("/data")
 def get_data():
-    # Возвращает метрики (уже собранные)
-    latest_metrics = database.get_latest_metrics()
+    """
+    Возвращает последнюю метрику (CPU,RAM и т.д.) для этого пользователя (или всех, если admin).
+    """
+    user_id = session["user_id"]
+    user_role = session["role"]
+    latest_metrics = database.get_latest_metrics(user_id, user_role)
     return jsonify({"metrics": latest_metrics, "status": connection_status})
 
 # -------------- Telegram, 2FA --------------
@@ -167,7 +184,7 @@ def tg_connect():
     if "logged_in" not in session:
         return redirect(url_for("login"))
     user_id = session["user_id"]
-    user = database.get_user_by_id(user_id)
+    user = get_user_by_id(user_id)
 
     if request.method=="POST":
         new_tg = request.form["telegram_username"].strip()
@@ -188,7 +205,7 @@ def twofa_verify():
         code = request.form["code"].strip()
         if code == session.get("twofa_code"):
             user_id = session["user_id"]
-            user = database.get_user_by_id(user_id)
+            user = get_user_by_id(user_id)
             session["logged_in"] = True
             session.pop("partial_login", None)
             session.pop("twofa_code", None)
@@ -204,7 +221,7 @@ def twofa_setup():
     if "logged_in" not in session:
         return redirect(url_for("login"))
     user_id = session["user_id"]
-    user = database.get_user_by_id(user_id)
+    user = get_user_by_id(user_id)
     if not user["telegram_username"]:
         return render_template("twofa_setup.html",
                                error="Сначала подключите Telegram (/tg_connect)",
@@ -242,7 +259,7 @@ def servers_list():
     if "logged_in" not in session:
         return redirect(url_for("login"))
     user_id = session["user_id"]
-    role = session.get("role","user")
+    role = session["role"]
 
     if request.method=="POST":
         name = request.form["name"]
@@ -260,12 +277,12 @@ def servers_list():
 def servers_edit(server_id):
     if "logged_in" not in session:
         return redirect(url_for("login"))
-    role = session.get("role","user")
+    role = session["role"]
     user_id = session["user_id"]
-    s = database.get_server_by_id(server_id)
+    s = get_server_by_id(server_id)
     if not s:
         return "Нет такого сервера"
-    if role!="admin" and s["user_id"]!=user_id:
+    if role != "admin" and s["user_id"] != user_id:
         return "Недостаточно прав"
 
     if request.method=="POST":
@@ -283,12 +300,12 @@ def servers_edit(server_id):
 def servers_delete(server_id):
     if "logged_in" not in session:
         return redirect(url_for("login"))
-    role = session.get("role","user")
+    role = session["role"]
     user_id = session["user_id"]
-    s = database.get_server_by_id(server_id)
+    s = get_server_by_id(server_id)
     if not s:
         return "Сервер не найден"
-    if role!="admin" and s["user_id"]!=user_id:
+    if role != "admin" and s["user_id"] != user_id:
         return "Недостаточно прав"
     database.delete_server(server_id)
     return redirect(url_for("servers_list"))
@@ -299,30 +316,48 @@ def servers_delete(server_id):
 def report():
     if "logged_in" not in session:
         return redirect(url_for("login"))
+    user_id = session["user_id"]
+    role = session["role"]
+
     days = request.args.get("days","1")
     try:
         days = int(days)
     except:
         days = 1
-    rows = database.get_metrics_for_period(days)
+    rows = get_metrics_for_period(user_id, role, days)
     if not rows:
         return f"Нет данных за последние {days} дн."
-    cpus = [r[0] for r in rows]
-    rams = [r[1] for r in rows]
-    disks = [r[2] for r in rows]
+
+    # rows = [ (cpu, ram, disk, users, temp, timestamp), ... ]
+    cpus   = [r[0] for r in rows]
+    rams   = [r[1] for r in rows]
+    disks  = [r[2] for r in rows]
+    users_ = [r[3] for r in rows]
+    temps  = [r[4] for r in rows]
 
     cpu_min, cpu_max = min(cpus), max(cpus)
     cpu_avg = sum(cpus)/len(cpus)
+
     ram_min, ram_max = min(rams), max(rams)
     ram_avg = sum(rams)/len(rams)
+
     disk_min, disk_max = min(disks), max(disks)
     disk_avg = sum(disks)/len(disks)
+
+    users_min, users_max = min(users_), max(users_)
+    users_avg = sum(users_)/len(users_)
+
+    temp_min, temp_max = min(temps), max(temps)
+    temp_avg = sum(temps)/len(temps)
 
     return render_template("report.html",
                            days=days,
                            cpu_min=cpu_min, cpu_max=cpu_max, cpu_avg=cpu_avg,
                            ram_min=ram_min, ram_max=ram_max, ram_avg=ram_avg,
-                           disk_min=disk_min, disk_max=disk_max, disk_avg=disk_avg)
+                           disk_min=disk_min, disk_max=disk_max, disk_avg=disk_avg,
+                           users_min=users_min, users_max=users_max, users_avg=users_avg,
+                           temp_min=temp_min, temp_max=temp_max, temp_avg=temp_avg
+    )
 
 # -------------- Экспорт CSV --------------
 
@@ -330,14 +365,17 @@ def report():
 def export_data():
     if "logged_in" not in session:
         return redirect(url_for("login"))
-    rows = get_all_metrics()
+    user_id = session["user_id"]
+    role = session["role"]
+
+    rows = get_all_metrics(user_id, role)
     if not rows:
         return "Нет данных для экспорта."
 
-    import io, csv
+    # rows = [ (id, timestamp, cpu, ram, disk, net_rx, net_tx, users, temp), ... ]
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id","timestamp","cpu","ram","disk","net_rx","net_tx"])
+    writer.writerow(["id","timestamp","cpu","ram","disk","net_rx","net_tx","users","temp"])
     for row in rows:
         writer.writerow(row)
     output.seek(0)
@@ -348,37 +386,23 @@ def export_data():
         download_name="metrics_export.csv"
     )
 
-# -------------- Динамический дашборд (функциональный) --------------
+# -------------- Динамический дашборд --------------
 
 @app.route("/dashboard_custom")
 def dashboard_custom():
-    """
-    Покажем тот же блок с метриками, плюс 2 графика (или mini-charts).
-    Можно параметрами cpu=1&ram=1&disk=1 скрывать/показывать блоки.
-    """
     if "logged_in" not in session:
         return redirect(url_for("login"))
 
-    show_cpu = request.args.get("cpu","1")=="1"
-    show_ram = request.args.get("ram","1")=="1"
-    show_disk = request.args.get("disk","1")=="1"
+    show_cpu  = (request.args.get("cpu","1")  == "1")
+    show_ram  = (request.args.get("ram","1")  == "1")
+    show_disk = (request.args.get("disk","1") == "1")
+
     return render_template("dashboard_custom.html",
                            show_cpu=show_cpu,
                            show_ram=show_ram,
                            show_disk=show_disk)
 
 # -------------- WebSocket test --------------
-
-@app.route("/socketio_test")
-def socketio_test():
-    return render_template("socketio_test.html")
-
-@app.route("/socketio_test_emit")
-def socketio_test_emit():
-    # broadcast=True больше не поддерживается, просто не указываем room => всем
-    socketio.emit("server_event", {"data": "Привет с сервера!"})
-    return "Событие отправлено всем клиентам!"
-
 @socketio.on("connect")
 def on_connect():
     print("Client connected via SocketIO")

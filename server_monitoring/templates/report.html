@@ -13,9 +13,41 @@
 </nav>
 
 <p>Период: последние {{ days }} дней</p>
-<p>CPU: min={{ cpu_min|round(2) }}%, max={{ cpu_max|round(2) }}%, avg={{ cpu_avg|round(2) }}%</p>
-<p>RAM: min={{ ram_min|round(2) }}%, max={{ ram_max|round(2) }}%, avg={{ ram_avg|round(2) }}%</p>
-<p>Disk: min={{ disk_min|round(2) }}%, max={{ disk_max|round(2) }}%, avg={{ disk_avg|round(2) }}%</p>
+
+<!-- CPU -->
+<p>CPU:
+    min={{ cpu_min|round(2) }}%,
+    max={{ cpu_max|round(2) }}%,
+    avg={{ cpu_avg|round(2) }}%
+</p>
+
+<!-- RAM -->
+<p>RAM:
+    min={{ ram_min|round(2) }}%,
+    max={{ ram_max|round(2) }}%,
+    avg={{ ram_avg|round(2) }}%
+</p>
+
+<!-- Disk -->
+<p>Disk:
+    min={{ disk_min|round(2) }}%,
+    max={{ disk_max|round(2) }}%,
+    avg={{ disk_avg|round(2) }}%
+</p>
+
+<!-- Users -->
+<p>Пользователи:
+    min={{ users_min }},
+    max={{ users_max }},
+    avg={{ users_avg|round(2) }}
+</p>
+
+<!-- Temp -->
+<p>Температура (°C):
+    min={{ temp_min|round(1) }},
+    max={{ temp_max|round(1) }},
+    avg={{ temp_avg|round(1) }}
+</p>
 
 <form method="GET">
     <label>Сколько дней:</label>
