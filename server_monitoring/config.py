@@ -1,17 +1,17 @@
 DB_NAME = "monitoring.db"
+
 THRESHOLDS = {
     "cpu": 80,
     "ram": 80,
     "disk": 90
 }
-EMAIL_SETTINGS = {
-    "sender": "salmanov.maxim2016@yandex.ru",
-    "password": "passwd",
-    "receiver": "receiver_email@gmail.com"
-}
-SSH_CONFIG = {
-    "default_user": "root"
+
+TELEGRAM_BOT_TOKEN = "8180962728:AAFFZI2-SZT8Ig-0_VAy0wOYuEumJbY_VQs"
+
+connection_status = {
+    "status": "Waiting for connection",
+    "error": None
 }
 
-# Глобальная переменная для статуса подключения
-connection_status = {"status": "Ожидание подключения", "error": None}
+# Можно определить длину кода для 2FA
+TWOFA_CODE_LENGTH = 6

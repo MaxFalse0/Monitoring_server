@@ -3,18 +3,24 @@ let chart;
 function initializeChart() {
     const ctx = document.getElementById("metricsChart");
     if (!ctx) {
-        console.error("Элемент canvas с id 'metricsChart' не найден!");
+        console.error("Canvas with id 'metricsChart' not found");
         return;
     }
 
     chart = new Chart(ctx, {
         type: "bar",
         data: {
-            labels: ["CPU", "RAM", "Disk"],
+            labels: ["CPU(%)", "RAM(%)", "Disk(%)", "Net RX(bytes)", "Net TX(bytes)"],
             datasets: [{
-                label: "Usage Percentage",
-                data: [0, 0, 0],
-                backgroundColor: ["#ff6384", "#36a2eb", "#ffce56"],
+                label: "Current Values",
+                data: [0, 0, 0, 0, 0],
+                backgroundColor: [
+                    "#ff6384", // CPU
+                    "#36a2eb", // RAM
+                    "#ffce56", // Disk
+                    "#4bc0c0", // Net RX
+                    "#9966ff"  // Net TX
+                ],
                 borderWidth: 1
             }]
         },
@@ -22,104 +28,80 @@ function initializeChart() {
             scales: {
                 y: {
                     beginAtZero: true,
-                    max: 100,
                     title: {
                         display: true,
-                        text: "Usage (%)"
-                    }
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: "Metrics"
+                        text: "Value"
                     }
                 }
             },
             plugins: {
-                legend: {
-                    display: true,
-                    position: "top"
-                },
-                title: {
-                    display: true,
-                    text: "Server Metrics"
-                }
-            },
-            animation: {
-                duration: 1000,
-                easing: "easeInOutQuad"
+                legend: { display: true },
+                title: { display: true, text: "Server Metrics" }
             }
         }
     });
-    console.log("Chart successfully initialized");
 }
 
 function updateChart(data) {
-    console.log("Received data for chart:", data);
     if (!chart) {
         initializeChart();
     }
     if (data && data.metrics) {
-        const { cpu, ram, disk } = data.metrics;
+        const { cpu, ram, disk, net_rx, net_tx } = data.metrics;
         const now = new Date().toLocaleTimeString();
+
+        chart.data.datasets[0].data = [cpu || 0, ram || 0, disk || 0, net_rx || 0, net_tx || 0];
+        chart.update();
+
+        document.getElementById("cpu").textContent = cpu !== undefined ? `${cpu}%` : "--";
+        document.getElementById("ram").textContent = ram !== undefined ? `${ram}%` : "--";
+        document.getElementById("disk").textContent = disk !== undefined ? `${disk}%` : "--";
+        document.getElementById("net-rx").textContent = net_rx !== undefined ? `${net_rx} bytes` : "--";
+        document.getElementById("net-tx").textContent = net_tx !== undefined ? `${net_tx} bytes` : "--";
         document.getElementById("last-update").textContent = now;
 
-        chart.data.datasets[0].data = [cpu || 0, ram || 0, disk || 0];
-        chart.update();
-        console.log("Chart updated with data:", chart.data.datasets[0].data);
-
-        const cpuElement = document.getElementById("cpu");
-        const ramElement = document.getElementById("ram");
-        const diskElement = document.getElementById("disk");
-
-        [cpuElement, ramElement, diskElement].forEach((element, index) => {
-            element.textContent = data.metrics[Object.keys(data.metrics)[index]] !== undefined
-                ? `${data.metrics[Object.keys(data.metrics)[index]]}%`
-                : "Waiting for data...";
-            if (data.metrics[Object.keys(data.metrics)[index]] > 80) {
-                element.classList.add("high");
+        // Подсветка, если >80% (CPU, RAM, DISK)
+        let values = [cpu, ram, disk];
+        let elements = [
+            document.getElementById("cpu"),
+            document.getElementById("ram"),
+            document.getElementById("disk")
+        ];
+        values.forEach((val, i) => {
+            if (val > 80) {
+                elements[i].classList.add("high");
             } else {
-                element.classList.remove("high");
+                elements[i].classList.remove("high");
             }
         });
-    } else {
-        console.log("No metrics data to update");
-        document.getElementById("last-update").textContent = "Never";
     }
 }
 
 function fetchMetrics() {
     fetch("/data")
-        .then(response => {
-            if (!response.ok) {
-                throw new Error("HTTP Error: " + response.status);
-            }
-            return response.json();
+        .then(res => {
+            if (!res.ok) throw new Error("HTTP error " + res.status);
+            return res.json();
         })
         .then(data => {
-            console.log("Response from /data:", data);
-            if (data.status && data.status.error) {
-                document.querySelector(".error").textContent = data.status.error || "Unknown error";
-                document.querySelector(".message").textContent = "";
-            } else {
-                document.querySelector(".message").textContent = data.status ? data.status.status : "Data received";
-                if (document.querySelector(".error")) {
-                    document.querySelector(".error").textContent = "";
+            updateChart(data);
+            if (data.status) {
+                let msgEl = document.querySelector(".message");
+                if (msgEl) {
+                    msgEl.textContent = data.status.status || "Monitoring...";
                 }
-                updateChart(data);
+                let errEl = document.querySelector(".error");
+                if (errEl && data.status.error) {
+                    errEl.textContent = data.status.error;
+                }
             }
         })
-        .catch(error => {
-            console.error("Error fetching metrics:", error);
-            document.querySelector(".message").textContent = "Error connecting to server";
-            if (document.querySelector(".error")) {
-                document.querySelector(".error").textContent = "Failed to load data";
-            }
+        .catch(err => {
+            console.error("Error fetching /data:", err);
         });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("Page loaded, starting to fetch metrics");
     initializeChart();
     fetchMetrics();
     setInterval(fetchMetrics, 2000);

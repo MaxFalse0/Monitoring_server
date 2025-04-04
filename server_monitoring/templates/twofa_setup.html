@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Настройка 2FA</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <h1>Двухфакторная аутентификация</h1>
+    <nav>
+        <a href="{{ url_for('dashboard') }}">На главную</a> |
+        <a href="{{ url_for('logout') }}">Выйти</a>
+    </nav>
+
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% else %}
+        {% if twofa_enabled == 1 %}
+            <p>2FA включена.</p>
+            <form method="POST">
+                <input type="hidden" name="action" value="disable">
+                <button type="submit">Выключить 2FA</button>
+            </form>
+        {% else %}
+            <p>2FA выключена.</p>
+            <form method="POST">
+                <input type="hidden" name="action" value="enable">
+                <button type="submit">Включить 2FA</button>
+            </form>
+        {% endif %}
+    {% endif %}
+</body>
+</html>

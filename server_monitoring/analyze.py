@@ -1,34 +1,36 @@
-from Monitoring_server.server_monitoring.config import THRESHOLDS, EMAIL_SETTINGS
-import smtplib
-from email.mime.text import MIMEText
+from server_monitoring.config import THRESHOLDS, TELEGRAM_BOT_TOKEN
+import requests
 
-def check_alerts(cpu, ram, disk):
-    alerts = []  # Список для хранения предупреждений
+def check_alerts(cpu, ram, disk, telegram_username=None):
+    alerts = []
     if cpu > THRESHOLDS["cpu"]:
-        alerts.append(f"Высокая загрузка CPU: {cpu}%")
+        alerts.append(f"Высокая загрузка CPU: {cpu:.1f}%")
     if ram > THRESHOLDS["ram"]:
-        alerts.append(f"Высокая загрузка RAM: {ram}%")
+        alerts.append(f"Высокая загрузка RAM: {ram:.1f}%")
     if disk > THRESHOLDS["disk"]:
-        alerts.append(f"Мало места на диске: {disk}% занято")
-    if alerts:
-        try:
-            send_email("\n".join(alerts))
-        except Exception as e:
-            print(f"Не удалось отправить уведомление: {e}")
+        alerts.append(f"Мало места на диске: {disk:.1f}% занято")
 
-def send_email(message):
-    msg = MIMEText(message)
-    msg["Subject"] = "Server Alert!"
-    msg["From"] = EMAIL_SETTINGS["sender"]
-    msg["To"] = EMAIL_SETTINGS["receiver"]
+    if alerts and telegram_username:
+        message = "\n".join(alerts)
+        send_telegram_alert(telegram_username, message)
+
+def send_telegram_alert(user_telegram_username, message):
+    """
+    Упрощённо считаем, что user_telegram_username — это chat_id (число).
+    """
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            # Для Gmail нужен App Password вместо обычного пароля
-            server.login(EMAIL_SETTINGS["sender"], EMAIL_SETTINGS["password"])
-            server.send_message(msg)
-            print("Уведомление отправлено на email")
-    except smtplib.SMTPAuthenticationError:
-        print("Ошибка аутентификации SMTP: проверьте логин и пароль в EMAIL_SETTINGS")
+        chat_id = int(user_telegram_username)
+    except ValueError:
+        print("Телеграм username не является chat_id, не отправляем сообщение.")
+        return
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": message}
+    try:
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            print(f"Отправлено сообщение в Telegram (chat_id={chat_id}).")
+        else:
+            print(f"Ошибка отправки в Telegram: {resp.text}")
     except Exception as e:
-        print(f"Ошибка отправки email: {e}")
+        print(f"Ошибка при отправке Telegram: {e}")

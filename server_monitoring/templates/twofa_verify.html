@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Проверка 2FA</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <h1>Двухфакторная аутентификация</h1>
+    <p>Мы отправили одноразовый код в ваш Telegram.</p>
+    <form method="POST">
+        <label for="code">Введите код:</label>
+        <input type="text" id="code" name="code" required>
+        <button type="submit">Подтвердить</button>
+    </form>
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% endif %}
+</body>
+</html>

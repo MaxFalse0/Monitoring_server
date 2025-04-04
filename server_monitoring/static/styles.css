@@ -1,85 +1,88 @@
 body {
     font-family: Arial, sans-serif;
+    background: #f4f4f4;
     margin: 20px;
-    background-color: #f4f4f4;
 }
-
 h1 {
-    color: #333;
     text-align: center;
+    color: #333;
 }
-
+nav {
+    text-align: center;
+    margin-bottom: 10px;
+}
+nav a {
+    margin: 0 10px;
+    color: #007BFF;
+    text-decoration: none;
+}
+nav a:hover {
+    text-decoration: underline;
+}
 form {
-    background: white;
-    padding: 20px;
-    border-radius: 5px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    background: #fff;
     max-width: 400px;
-    margin: 0 auto;
+    margin: 0 auto 20px;
+    padding: 20px;
+    border-radius: 4px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
 }
-
 label {
     display: block;
     margin: 10px 0 5px;
 }
-
 input {
     width: 100%;
     padding: 8px;
     margin-bottom: 10px;
+    border-radius: 3px;
     border: 1px solid #ddd;
-    border-radius: 4px;
 }
-
 button {
-    background-color: #007BFF;
-    color: white;
-    padding: 10px 15px;
+    background: #007BFF;
+    color: #fff;
     border: none;
-    border-radius: 4px;
-    cursor: pointer;
+    padding: 10px 15px;
     width: 100%;
+    cursor: pointer;
 }
-
 button:hover {
-    background-color: #0056b3;
+    background: #0056b3;
 }
-
 .message {
-    color: #28a745;
+    color: green;
     font-weight: bold;
     text-align: center;
 }
-
 .error {
-    color: #dc3545;
+    color: red;
     font-weight: bold;
     text-align: center;
 }
-
 #metrics-container {
-    margin-top: 20px;
-    background: white;
+    background: #fff;
+    max-width: 600px;
+    margin: 20px auto;
     padding: 15px;
     border-radius: 5px;
     box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    max-width: 600px;
-    margin: 20px auto;
 }
-
 .metric-value {
     font-weight: bold;
-    color: #333;
 }
-
 .metric-value.high {
-    color: #dc3545;
+    color: red;
 }
-
 canvas {
-    margin-top: 20px;
     max-width: 600px;
     display: block;
-    margin-left: auto;
-    margin-right: auto;
+    margin: 20px auto;
+}
+.instructions {
+    max-width: 600px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 15px;
+    border-radius: 4px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
 }

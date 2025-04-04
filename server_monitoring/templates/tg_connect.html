@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Подключение Telegram</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <h1>Подключить Telegram</h1>
+    <nav>
+        <a href="{{ url_for('dashboard') }}">На главную</a> |
+        <a href="{{ url_for('logout') }}">Выйти</a>
+    </nav>
+
+    <div class="instructions">
+        <p>
+            Чтобы получить chat_id:
+        </p>
+        <ol>
+            <li>Откройте бот <strong>{{ bot_name }}</strong> в Telegram и введите команду <code>/start</code>.</li>
+            <li>Бот пришлёт вам ваш <em>chat_id</em>.</li>
+            <li>Введите это число ниже, чтобы привязать Telegram к аккаунту.</li>
+        </ol>
+    </div>
+
+    <form method="POST">
+        <label for="telegram_username">Ваш chat_id:</label>
+        <input type="text" id="telegram_username" name="telegram_username" placeholder="Например 123456789" required><br>
+        <button type="submit">Сохранить</button>
+    </form>
+
+    {% if current_tg %}
+        <p>Текущее подключение: {{ current_tg }}</p>
+    {% endif %}
+</body>
+</html>
