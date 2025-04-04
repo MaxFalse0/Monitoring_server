@@ -3,10 +3,12 @@ body {
     background: #f4f4f4;
     margin: 20px;
 }
+
 h1 {
     text-align: center;
     color: #333;
 }
+
 nav {
     text-align: center;
     margin-bottom: 10px;
@@ -19,6 +21,7 @@ nav a {
 nav a:hover {
     text-decoration: underline;
 }
+
 form {
     background: #fff;
     max-width: 400px;
@@ -49,16 +52,19 @@ button {
 button:hover {
     background: #0056b3;
 }
+
 .message {
     color: green;
     font-weight: bold;
     text-align: center;
 }
+
 .error {
     color: red;
     font-weight: bold;
     text-align: center;
 }
+
 #metrics-container {
     background: #fff;
     max-width: 600px;
@@ -67,17 +73,21 @@ button:hover {
     border-radius: 5px;
     box-shadow: 0 0 10px rgba(0,0,0,0.1);
 }
+
 .metric-value {
     font-weight: bold;
 }
+
 .metric-value.high {
     color: red;
 }
+
 canvas {
     max-width: 600px;
     display: block;
     margin: 20px auto;
 }
+
 .instructions {
     max-width: 600px;
     margin: 0 auto;

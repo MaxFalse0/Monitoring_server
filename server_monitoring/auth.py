@@ -15,7 +15,7 @@ def login_user(username, password):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, username, password, telegram_username, twofa_enabled
+        SELECT id, username, password, telegram_username, twofa_enabled, role
         FROM users
         WHERE username=? AND password=?
     ''', (username, password))
@@ -27,6 +27,7 @@ def login_user(username, password):
             "username": row[1],
             "password": row[2],
             "telegram_username": row[3],
-            "twofa_enabled": row[4]
+            "twofa_enabled": row[4],
+            "role": row[5]
         }
     return None

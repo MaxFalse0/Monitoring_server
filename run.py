@@ -1,18 +1,15 @@
 import os
-import threading
-
+from server_monitoring.web import app, socketio
 from server_monitoring.database import init_db
-from server_monitoring.web import app
-from server_monitoring.telegram_bot import run_bot
+from server_monitoring.scheduler import start_scheduler
 
 if __name__ == "__main__":
-    # Создаём/обновляем таблицы в базе
+    # Инициализируем/обновляем БД (создаёт таблицы при отсутствии)
     init_db()
 
-    # Избегаем двойного запуска бота при debug=True:
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        bot_thread = threading.Thread(target=run_bot, daemon=True)
-        bot_thread.start()
+    # Запускаем планировщик (APSсheduler) с учётом pytz
+    sched = start_scheduler()
 
-    # Запускаем Flask в debug-режиме
-    app.run(debug=True)
+    # Запуск Flask + SocketIO
+    # (Чтобы работал WebSocket, вызываем socketio.run, а не app.run)
+    socketio.run(app, debug=True, host="127.0.0.1", port=5000)

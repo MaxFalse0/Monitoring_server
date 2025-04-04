@@ -24,9 +24,9 @@ def get_server_metrics(server_ip, server_port, username, password):
         stdin, stdout, stderr = client.exec_command("df / | awk '/\\// {print $5}' | sed 's/%//'")
         disk = stdout.read().decode().strip()
 
-        # Network (первый не-lo)
-        net_cmd = "cat /proc/net/dev | grep -v 'lo:' | grep ':' | head -n 1 | awk '{print $2, $10}'"
-        stdin, stdout, stderr = client.exec_command(net_cmd)
+        # Net (первый не-lo)
+        cmd_net = "cat /proc/net/dev | grep -v 'lo:' | grep ':' | head -n 1 | awk '{print $2, $10}'"
+        stdin, stdout, stderr = client.exec_command(cmd_net)
         net_data = stdout.read().decode().strip().split()
         if len(net_data) != 2:
             raise ValueError("Error getting network metrics")
@@ -36,11 +36,11 @@ def get_server_metrics(server_ip, server_port, username, password):
             raise ValueError("Error getting CPU/RAM/Disk")
 
         cpu, ram, disk = float(cpu), float(ram), float(disk)
-        print(f"Metrics: CPU={cpu}%, RAM={ram}%, Disk={disk}%, RX={net_rx}, TX={net_tx}")
+        print(f"Metrics collected: CPU={cpu}%, RAM={ram}%, Disk={disk}%, Net RX={net_rx}, Net TX={net_tx}")
         return cpu, ram, disk, net_rx, net_tx
 
     except Exception as e:
-        print(f"Error connecting or collecting metrics: {e}")
+        print(f"Error collecting metrics: {e}")
         return None, None, None, None, None
     finally:
         client.close()

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket тест</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client/dist/socket.io.min.js"></script>
+</head>
+<body>
+<h1>Socket.IO Test</h1>
+<nav>
+    <a href="{{ url_for('dashboard') }}">Главная</a> |
+    <a href="{{ url_for('socketio_test_emit') }}">Отправить событие</a> |
+    <a href="{{ url_for('logout') }}">Выйти</a>
+</nav>
+
+<div id="messages"></div>
+
+<script>
+    let socket = io();
+
+    socket.on("connect", () => {
+        console.log("WebSocket connected");
+    });
+
+    socket.on("server_event", (data) => {
+        console.log("Server event:", data);
+        let div = document.getElementById("messages");
+        div.innerHTML += "<p>" + JSON.stringify(data) + "</p>";
+    });
+</script>
+</body>
+</html>

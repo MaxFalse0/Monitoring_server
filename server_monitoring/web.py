@@ -1,36 +1,40 @@
-import threading
+import os
 import random
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+import csv
+import io
+import threading
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
+from flask_socketio import SocketIO, emit
 
 from server_monitoring.collect import collect_metrics
 from server_monitoring.auth import login_user, register_user
 from server_monitoring import database
 from server_monitoring.analyze import send_telegram_alert
-from server_monitoring.config import TWOFA_CODE_LENGTH
+from server_monitoring.config import TWOFA_CODE_LENGTH, SOCKETIO_CORS_ALLOWED_ORIGINS
+from server_monitoring.config import connection_status
+from server_monitoring.database import get_metrics_for_period, get_all_metrics, get_server_by_id
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
-connection_status = {"status": "Waiting for connection", "error": None}
+socketio = SocketIO(app, cors_allowed_origins=SOCKETIO_CORS_ALLOWED_ORIGINS)
 
 @app.before_request
 def check_session():
-    """
-    Разрешаем доступ к /login, /register, /twofa_verify, /static и всё остальное
-    требует 'logged_in' в session.
-
-    Если есть partial_login (логин/пароль прошли, но 2FA не подтверждена),
-    пускаем только на /twofa_verify.
-    """
-    allowed_routes = ("login", "register", "twofa_verify", "static")
+    allowed_routes = (
+        "login", "register", "twofa_verify",
+        "static", "export_data",
+        "socketio_test", "socketio_test_emit"
+    )
     if request.endpoint not in allowed_routes and "logged_in" not in session:
-        # Если пользователь ввёл логин/пароль, но ещё не ввёл 2FA-код
-        if "partial_login" in session:
-            if request.endpoint != "twofa_verify":
-                return redirect(url_for("twofa_verify"))
+        if "partial_login" in session and request.endpoint == "twofa_verify":
+            return None
+        elif "partial_login" in session:
+            return redirect(url_for("twofa_verify"))
         else:
             return redirect(url_for("login"))
 
+# -------------- Авторизация --------------
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -44,53 +48,46 @@ def register():
             return render_template("register.html", error=str(e))
     return render_template("register.html", error=None)
 
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """
-    Авторизация + проверка, включена ли 2FA
-    """
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
         user = login_user(username, password)
         if user:
-            # Если 2FA включена и у пользователя есть telegram_username
             if user["twofa_enabled"] == 1 and user["telegram_username"]:
-                # Генерируем код
-                twofa_code = generate_2fa_code()
-                # Сохраняем в session
-                session["twofa_code"] = twofa_code
+                code = generate_2fa_code()
+                session["twofa_code"] = code
                 session["partial_login"] = True
                 session["user_id"] = user["id"]
-                # Шлём код
-                msg = f"Ваш код для входа: {twofa_code}"
-                send_telegram_alert(user["telegram_username"], msg)
+                send_telegram_alert(user["telegram_username"], f"Ваш код для входа: {code}")
                 return redirect(url_for("twofa_verify"))
             else:
-                # Если 2FA не нужна
                 session["logged_in"] = True
                 session["user_id"] = user["id"]
                 session["telegram_username"] = user["telegram_username"]
+                session["role"] = user["role"]
                 return redirect(url_for("dashboard"))
         else:
-            return render_template("login.html", error="Неверный логин или пароль.")
+            return render_template("login.html", error="Неверный логин/пароль")
     return render_template("login.html", error=None)
-
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
 
+# -------------- Главная страница --------------
 
 @app.route("/", methods=["GET", "POST"])
 def dashboard():
     """
-    Главная страница.
+    Если POST => ручной ввод IP/port/ssh => collect_metrics
+    Если GET => показать список имеющихся серверов, + поля CPU/RAM/...
     """
     global connection_status
     if request.method == "POST":
+        # Ручной ввод
         server_ip = request.form["server_ip"]
         server_port = int(request.form["server_port"])
         ssh_user = request.form["username"]
@@ -108,113 +105,292 @@ def dashboard():
 
         return render_template("index.html",
                                message=connection_status["status"],
-                               metrics=None,
-                               status=connection_status)
+                               status=connection_status,
+                               servers=get_user_servers())  # чтобы не потерять список
+    else:
+        # GET => просто показать список серверов + метрики
+        return render_template("index.html",
+                               message="Enter server data or select existing server",
+                               status=connection_status,
+                               servers=get_user_servers())
 
-    return render_template("index.html",
-                           message="Enter server data to start monitoring.",
-                           metrics=None,
-                           status=connection_status)
+@app.route("/connect_existing_server", methods=["POST"])
+def connect_existing_server():
+    """
+    Вызывается при выборе сервера из списка (index.html).
+    Находим IP/port/ssh => collect_metrics => вернём на dashboard
+    """
+    server_id = request.form.get("server_id")
+    if not server_id:
+        return redirect(url_for("dashboard"))
 
+    s = get_server_by_id(server_id)
+    if not s:
+        return redirect(url_for("dashboard"))
+
+    global connection_status
+    connection_status["status"] = "Connecting to existing server..."
+    connection_status["error"] = None
+
+    # Запускаем поток
+    tg_username = session.get("telegram_username")
+    threading.Thread(
+        target=collect_metrics,
+        args=(s["ip"], s["port"], s["ssh_user"], s["ssh_password"], connection_status, tg_username),
+        daemon=True
+    ).start()
+
+    return redirect(url_for("dashboard"))
+
+def get_user_servers():
+    """
+    Вспомогательная функция: возвращает список серверов для текущего пользователя
+    или все, если админ
+    """
+    if "logged_in" not in session:
+        return []
+    user_id = session["user_id"]
+    role = session.get("role","user")
+    servers = database.get_servers_for_user(user_id, role)
+    return servers
 
 @app.route("/data")
 def get_data():
+    # Возвращает метрики (уже собранные)
     latest_metrics = database.get_latest_metrics()
     return jsonify({"metrics": latest_metrics, "status": connection_status})
 
+# -------------- Telegram, 2FA --------------
 
-# -------------- Telegram Connect --------------
-
-@app.route("/tg_connect", methods=["GET", "POST"])
+@app.route("/tg_connect", methods=["GET","POST"])
 def tg_connect():
-    """
-    Страница подключения телеграм-бота (сохраняем chat_id).
-    При успехе отправляем в Telegram приветственное сообщение.
-    """
     if "logged_in" not in session:
         return redirect(url_for("login"))
-
     user_id = session["user_id"]
     user = database.get_user_by_id(user_id)
 
-    if request.method == "POST":
+    if request.method=="POST":
         new_tg = request.form["telegram_username"].strip()
         database.update_user_telegram(user_id, new_tg)
         session["telegram_username"] = new_tg
-
-        # Отправим в Telegram сообщение, что бот подключен
         send_telegram_alert(new_tg, "Вы успешно подключили бота!")
-
         return redirect(url_for("tg_connect"))
 
     return render_template("tg_connect.html",
                            current_tg=user["telegram_username"],
                            bot_name="@YourMonitoringBotHere")
 
-
-# -------------- 2FA ----------------
-
-@app.route("/twofa_setup", methods=["GET", "POST"])
-def twofa_setup():
-    """
-    Включение/выключение 2FA, если есть Telegram.
-    """
-    if "logged_in" not in session:
-        return redirect(url_for("login"))
-
-    user_id = session["user_id"]
-    user = database.get_user_by_id(user_id)
-    if not user["telegram_username"]:
-        return render_template("twofa_setup.html",
-                               error="Сначала подключите Telegram на странице /tg_connect",
-                               twofa_enabled=user["twofa_enabled"])
-
-    if request.method == "POST":
-        action = request.form.get("action")
-        if action == "enable":
-            database.set_twofa_enabled(user_id, True)
-            send_telegram_alert(user["telegram_username"], "2FA включена. При следующем входе потребуется код.")
-        elif action == "disable":
-            database.set_twofa_enabled(user_id, False)
-            send_telegram_alert(user["telegram_username"], "2FA выключена. Теперь вход только по паролю.")
-
-        return redirect(url_for("twofa_setup"))
-
-    return render_template("twofa_setup.html",
-                           error=None,
-                           twofa_enabled=user["twofa_enabled"])
-
-
-@app.route("/twofa_verify", methods=["GET", "POST"])
+@app.route("/twofa_verify", methods=["GET","POST"])
 def twofa_verify():
-    """
-    Пользователь вводит одноразовый код.
-    Если верно -> logged_in=True
-    """
     if "partial_login" not in session:
         return redirect(url_for("login"))
-
-    if request.method == "POST":
+    if request.method=="POST":
         code = request.form["code"].strip()
         if code == session.get("twofa_code"):
-            # Успешно
             user_id = session["user_id"]
             user = database.get_user_by_id(user_id)
-
             session["logged_in"] = True
             session.pop("partial_login", None)
             session.pop("twofa_code", None)
             session["telegram_username"] = user["telegram_username"]
-
+            session["role"] = user["role"]
             return redirect(url_for("dashboard"))
         else:
-            return render_template("twofa_verify.html", error="Неверный код, попробуйте ещё раз.")
-
+            return render_template("twofa_verify.html", error="Неверный код")
     return render_template("twofa_verify.html", error=None)
 
+@app.route("/twofa_setup", methods=["GET","POST"])
+def twofa_setup():
+    if "logged_in" not in session:
+        return redirect(url_for("login"))
+    user_id = session["user_id"]
+    user = database.get_user_by_id(user_id)
+    if not user["telegram_username"]:
+        return render_template("twofa_setup.html",
+                               error="Сначала подключите Telegram (/tg_connect)",
+                               twofa_enabled=user["twofa_enabled"])
+    if request.method=="POST":
+        action = request.form.get("action")
+        if action=="enable":
+            database.set_twofa_enabled(user_id, True)
+            send_telegram_alert(user["telegram_username"], "2FA включена.")
+        elif action=="disable":
+            database.set_twofa_enabled(user_id, False)
+            send_telegram_alert(user["telegram_username"], "2FA выключена.")
+        return redirect(url_for("twofa_setup"))
+    return render_template("twofa_setup.html",
+                           error=None,
+                           twofa_enabled=user["twofa_enabled"])
 
-# ---------------- Helper ----------------
+# -------------- Роли --------------
+
+@app.route("/set_role/<int:target_user_id>/<role>")
+def set_role(target_user_id, role):
+    if "logged_in" not in session:
+        return redirect(url_for("login"))
+    if session.get("role") != "admin":
+        return "Недостаточно прав"
+    if role not in ("admin","user"):
+        return "Неверная роль"
+    database.set_user_role(target_user_id, role)
+    return f"Пользователю {target_user_id} назначена роль {role}"
+
+# -------------- Управление серверами --------------
+
+@app.route("/servers", methods=["GET","POST"])
+def servers_list():
+    if "logged_in" not in session:
+        return redirect(url_for("login"))
+    user_id = session["user_id"]
+    role = session.get("role","user")
+
+    if request.method=="POST":
+        name = request.form["name"]
+        ip = request.form["ip"]
+        port = int(request.form["port"])
+        ssh_user = request.form["ssh_user"]
+        ssh_password = request.form["ssh_password"]
+        database.create_server(user_id, name, ip, port, ssh_user, ssh_password)
+        return redirect(url_for("servers_list"))
+
+    servers = database.get_servers_for_user(user_id, role)
+    return render_template("servers.html", servers=servers, is_admin=(role=="admin"))
+
+@app.route("/servers/<int:server_id>/edit", methods=["GET","POST"])
+def servers_edit(server_id):
+    if "logged_in" not in session:
+        return redirect(url_for("login"))
+    role = session.get("role","user")
+    user_id = session["user_id"]
+    s = database.get_server_by_id(server_id)
+    if not s:
+        return "Нет такого сервера"
+    if role!="admin" and s["user_id"]!=user_id:
+        return "Недостаточно прав"
+
+    if request.method=="POST":
+        name = request.form["name"]
+        ip = request.form["ip"]
+        port = int(request.form["port"])
+        ssh_user = request.form["ssh_user"]
+        ssh_password = request.form["ssh_password"]
+        database.update_server(server_id, name, ip, port, ssh_user, ssh_password)
+        return redirect(url_for("servers_list"))
+
+    return render_template("servers_edit.html", server=s)
+
+@app.route("/servers/<int:server_id>/delete", methods=["POST"])
+def servers_delete(server_id):
+    if "logged_in" not in session:
+        return redirect(url_for("login"))
+    role = session.get("role","user")
+    user_id = session["user_id"]
+    s = database.get_server_by_id(server_id)
+    if not s:
+        return "Сервер не найден"
+    if role!="admin" and s["user_id"]!=user_id:
+        return "Недостаточно прав"
+    database.delete_server(server_id)
+    return redirect(url_for("servers_list"))
+
+# -------------- Отчёты --------------
+
+@app.route("/report")
+def report():
+    if "logged_in" not in session:
+        return redirect(url_for("login"))
+    days = request.args.get("days","1")
+    try:
+        days = int(days)
+    except:
+        days = 1
+    rows = database.get_metrics_for_period(days)
+    if not rows:
+        return f"Нет данных за последние {days} дн."
+    cpus = [r[0] for r in rows]
+    rams = [r[1] for r in rows]
+    disks = [r[2] for r in rows]
+
+    cpu_min, cpu_max = min(cpus), max(cpus)
+    cpu_avg = sum(cpus)/len(cpus)
+    ram_min, ram_max = min(rams), max(rams)
+    ram_avg = sum(rams)/len(rams)
+    disk_min, disk_max = min(disks), max(disks)
+    disk_avg = sum(disks)/len(disks)
+
+    return render_template("report.html",
+                           days=days,
+                           cpu_min=cpu_min, cpu_max=cpu_max, cpu_avg=cpu_avg,
+                           ram_min=ram_min, ram_max=ram_max, ram_avg=ram_avg,
+                           disk_min=disk_min, disk_max=disk_max, disk_avg=disk_avg)
+
+# -------------- Экспорт CSV --------------
+
+@app.route("/export")
+def export_data():
+    if "logged_in" not in session:
+        return redirect(url_for("login"))
+    rows = get_all_metrics()
+    if not rows:
+        return "Нет данных для экспорта."
+
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id","timestamp","cpu","ram","disk","net_rx","net_tx"])
+    for row in rows:
+        writer.writerow(row)
+    output.seek(0)
+    return send_file(
+        io.BytesIO(output.getvalue().encode()),
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="metrics_export.csv"
+    )
+
+# -------------- Динамический дашборд (функциональный) --------------
+
+@app.route("/dashboard_custom")
+def dashboard_custom():
+    """
+    Покажем тот же блок с метриками, плюс 2 графика (или mini-charts).
+    Можно параметрами cpu=1&ram=1&disk=1 скрывать/показывать блоки.
+    """
+    if "logged_in" not in session:
+        return redirect(url_for("login"))
+
+    show_cpu = request.args.get("cpu","1")=="1"
+    show_ram = request.args.get("ram","1")=="1"
+    show_disk = request.args.get("disk","1")=="1"
+    return render_template("dashboard_custom.html",
+                           show_cpu=show_cpu,
+                           show_ram=show_ram,
+                           show_disk=show_disk)
+
+# -------------- WebSocket test --------------
+
+@app.route("/socketio_test")
+def socketio_test():
+    return render_template("socketio_test.html")
+
+@app.route("/socketio_test_emit")
+def socketio_test_emit():
+    # broadcast=True больше не поддерживается, просто не указываем room => всем
+    socketio.emit("server_event", {"data": "Привет с сервера!"})
+    return "Событие отправлено всем клиентам!"
+
+@socketio.on("connect")
+def on_connect():
+    print("Client connected via SocketIO")
+    emit("server_event", {"data":"Добро пожаловать! WebSocket connection established."})
+
+@socketio.on("disconnect")
+def on_disconnect():
+    print("Client disconnected")
+
+# ------------ Вспомогательное -----------
 
 def generate_2fa_code():
+    import random
     digits = "0123456789"
     return "".join(random.choice(digits) for _ in range(TWOFA_CODE_LENGTH))

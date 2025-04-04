@@ -6,15 +6,14 @@
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <h1>Двухфакторная аутентификация</h1>
-    <p>Мы отправили одноразовый код в ваш Telegram.</p>
-    <form method="POST">
-        <label for="code">Введите код:</label>
-        <input type="text" id="code" name="code" required>
-        <button type="submit">Подтвердить</button>
-    </form>
-    {% if error %}
-        <p class="error">{{ error }}</p>
-    {% endif %}
+<h1>Введите одноразовый код</h1>
+<form method="POST">
+    <label for="code">Код:</label>
+    <input type="text" name="code" required>
+    <button type="submit">Подтвердить</button>
+</form>
+{% if error %}
+    <p class="error">{{ error }}</p>
+{% endif %}
 </body>
 </html>

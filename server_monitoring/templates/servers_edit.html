@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Редактирование сервера</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<h1>Редактировать сервер</h1>
+<nav>
+    <a href="{{ url_for('servers_list') }}">К списку</a> |
+    <a href="{{ url_for('logout') }}">Выйти</a>
+</nav>
+<form method="POST">
+    <label for="name">Название:</label>
+    <input type="text" name="name" value="{{ server.name }}" required><br>
+
+    <label for="ip">IP:</label>
+    <input type="text" name="ip" value="{{ server.ip }}" required><br>
+
+    <label for="port">Порт:</label>
+    <input type="number" name="port" value="{{ server.port }}" required><br>
+
+    <label for="ssh_user">SSH пользователь:</label>
+    <input type="text" name="ssh_user" value="{{ server.ssh_user }}"><br>
+
+    <label for="ssh_password">SSH пароль:</label>
+    <input type="password" name="ssh_password" value="{{ server.ssh_password }}"><br>
+
+    <button type="submit">Сохранить</button>
+</form>
+</body>
+</html>

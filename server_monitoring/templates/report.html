@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Отчёт</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<h1>Отчёт (aggregate)</h1>
+<nav>
+    <a href="{{ url_for('dashboard') }}">Главная</a> |
+    <a href="{{ url_for('logout') }}">Выйти</a>
+</nav>
+
+<p>Период: последние {{ days }} дней</p>
+<p>CPU: min={{ cpu_min|round(2) }}%, max={{ cpu_max|round(2) }}%, avg={{ cpu_avg|round(2) }}%</p>
+<p>RAM: min={{ ram_min|round(2) }}%, max={{ ram_max|round(2) }}%, avg={{ ram_avg|round(2) }}%</p>
+<p>Disk: min={{ disk_min|round(2) }}%, max={{ disk_max|round(2) }}%, avg={{ disk_avg|round(2) }}%</p>
+
+<form method="GET">
+    <label>Сколько дней:</label>
+    <input type="number" name="days" value="{{ days }}">
+    <button type="submit">Показать</button>
+</form>
+</body>
+</html>
