@@ -1,58 +1,28 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Отчёт</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-<h1>Отчёт (aggregate)</h1>
-<nav>
-    <a href="{{ url_for('dashboard') }}">Главная</a> |
-    <a href="{{ url_for('logout') }}">Выйти</a>
-</nav>
+{% extends "base.html" %}
+{% block title %}Отчёт{% endblock %}
+{% block content %}
+<h1 class="page-title">Сводный отчёт</h1>
 
-<p>Период: последние {{ days }} дней</p>
+{% if cpu_min is not none %}
+<div class="island" style="max-width: 600px;">
+    <p><strong>CPU:</strong> {{ cpu_avg|round(2) }}% (мин: {{ cpu_min|round(2) }}%, макс: {{ cpu_max|round(2) }}%)</p>
+    <p><strong>RAM:</strong> {{ ram_avg|round(2) }}% (мин: {{ ram_min|round(2) }}%, макс: {{ ram_max|round(2) }}%)</p>
+    <p><strong>Disk:</strong> {{ disk_avg|round(2) }}% (мин: {{ disk_min|round(2) }}%, макс: {{ disk_max|round(2) }}%)</p>
+    <p><strong>Температура:</strong> {{ temp_avg|round(1) }}°C (мин: {{ temp_min|round(1) }}°C, макс: {{ temp_max|round(1) }}°C)</p>
+    <p><strong>Пользователи:</strong> {{ users_avg|round(0) }} (мин: {{ users_min }}, макс: {{ users_max }})</p>
+</div>
+{% else %}
+<p>Нет данных за этот период.</p>
+{% endif %}
 
-<!-- CPU -->
-<p>CPU:
-    min={{ cpu_min|round(2) }}%,
-    max={{ cpu_max|round(2) }}%,
-    avg={{ cpu_avg|round(2) }}%
-</p>
+<div class="island" style="max-width: 400px; margin-top: 30px;">
+    <form method="get">
+        <div class="input-group">
+            <input type="number" name="days" id="days" value="{{ days }}" placeholder="Количество дней" required>
+        </div>
+        <button type="submit">🔄 Обновить</button>
+    </form>
+</div>
 
-<!-- RAM -->
-<p>RAM:
-    min={{ ram_min|round(2) }}%,
-    max={{ ram_max|round(2) }}%,
-    avg={{ ram_avg|round(2) }}%
-</p>
-
-<!-- Disk -->
-<p>Disk:
-    min={{ disk_min|round(2) }}%,
-    max={{ disk_max|round(2) }}%,
-    avg={{ disk_avg|round(2) }}%
-</p>
-
-<!-- Users -->
-<p>Пользователи:
-    min={{ users_min }},
-    max={{ users_max }},
-    avg={{ users_avg|round(2) }}
-</p>
-
-<!-- Temp -->
-<p>Температура (°C):
-    min={{ temp_min|round(1) }},
-    max={{ temp_max|round(1) }},
-    avg={{ temp_avg|round(1) }}
-</p>
-
-<form method="GET">
-    <label>Сколько дней:</label>
-    <input type="number" name="days" value="{{ days }}">
-    <button type="submit">Показать</button>
-</form>
-</body>
-</html>
+<a href="{{ url_for('export_data') }}" class="btn" style="display: inline-block; margin-top: 20px;">📥 Экспорт CSV</a>
+{% endblock %}

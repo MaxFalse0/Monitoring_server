@@ -1,33 +1,21 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>2FA Setup</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-<h1>Двухфакторная аутентификация</h1>
-<nav>
-    <a href="{{ url_for('dashboard') }}">Главная</a> |
-    <a href="{{ url_for('logout') }}">Выйти</a>
-</nav>
+{% extends "base.html" %}
+{% block title %}2FA{% endblock %}
+{% block content %}
+<h1 class="page-title">Двухфакторная аутентификация</h1>
 
-{% if error %}
-    <p class="error">{{ error }}</p>
-{% else %}
-    {% if twofa_enabled == 1 %}
-        <p>2FA включена</p>
-        <form method="POST">
-            <input type="hidden" name="action" value="disable">
-            <button type="submit">Выключить 2FA</button>
-        </form>
-    {% else %}
-        <p>2FA выключена</p>
-        <form method="POST">
-            <input type="hidden" name="action" value="enable">
-            <button type="submit">Включить 2FA</button>
-        </form>
-    {% endif %}
-{% endif %}
-</body>
-</html>
+<div class="island" style="max-width: 400px;">
+    <p>Статус:
+        <strong style="color: {{ 'var(--success)' if twofa_enabled else 'var(--danger)' }}">
+            {{ 'включена ✅' if twofa_enabled else 'отключена ❌' }}
+        </strong>
+    </p>
+
+    <form method="POST" style="margin-top: 20px;">
+        {% if twofa_enabled %}
+            <button name="action" value="disable" class="btn" style="background:var(--danger);color:#fff;">Отключить</button>
+        {% else %}
+            <button name="action" value="enable" class="btn">Включить</button>
+        {% endif %}
+    </form>
+</div>
+{% endblock %}

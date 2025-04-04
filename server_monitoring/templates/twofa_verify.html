@@ -2,18 +2,24 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Проверка 2FA</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <title>Подтверждение 2FA</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-<h1>Введите одноразовый код</h1>
-<form method="POST">
-    <label for="code">Код:</label>
-    <input type="text" name="code" required>
-    <button type="submit">Подтвердить</button>
-</form>
-{% if error %}
-    <p class="error">{{ error }}</p>
-{% endif %}
+<div class="auth-wrapper">
+    <div class="auth-box">
+        <h1>Введите код</h1>
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST">
+            <div class="input-group">
+                <input type="text" name="code" placeholder="Код из Telegram" required>
+            </div>
+            <button type="submit">✅ Подтвердить</button>
+        </form>
+        <a href="{{ url_for('login') }}">Назад</a>
+    </div>
+</div>
 </body>
 </html>

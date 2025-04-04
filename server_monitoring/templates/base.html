@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <title>{% block title %}Мониторинг{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>Мониторинг</h2>
+    <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">Главная</a>
+    <a href="{{ url_for('report') }}" class="{% if request.endpoint == 'report' %}active{% endif %}">Отчёт</a>
+    <a href="{{ url_for('dashboard_custom') }}" class="{% if request.endpoint == 'dashboard_custom' %}active{% endif %}">Графики</a>
+    <a href="{{ url_for('servers_list') }}" class="{% if request.endpoint == 'servers_list' %}active{% endif %}">Серверы</a>
+    <a href="{{ url_for('tg_connect') }}" class="{% if request.endpoint == 'tg_connect' %}active{% endif %}">Telegram</a>
+    <a href="{{ url_for('twofa_setup') }}" class="{% if request.endpoint == 'twofa_setup' %}active{% endif %}">2FA</a>
+    <a href="{{ url_for('logout') }}">Выход</a>
+</div>
+
+<div class="main">
+    {% block content %}{% endblock %}
+</div>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -169,13 +169,42 @@ def get_user_servers():
 
 @app.route("/data")
 def get_data():
-    """
-    Возвращает последнюю метрику (CPU,RAM и т.д.) для этого пользователя (или всех, если admin).
-    """
     user_id = session["user_id"]
     user_role = session["role"]
-    latest_metrics = database.get_latest_metrics(user_id, user_role)
-    return jsonify({"metrics": latest_metrics, "status": connection_status})
+    latest = database.get_latest_metrics(user_id, user_role)
+
+    if not latest:
+        return jsonify({"metrics": {}, "status": connection_status})
+
+    metrics = {
+        "cpu": latest["cpu"],
+        "cpu_avg": latest.get("cpu_avg", latest["cpu"]),
+        "cpu_min": latest.get("cpu_min", latest["cpu"]),
+        "cpu_max": latest.get("cpu_max", latest["cpu"]),
+
+        "ram": latest["ram"],
+        "ram_avg": latest.get("ram_avg", latest["ram"]),
+        "ram_min": latest.get("ram_min", latest["ram"]),
+        "ram_max": latest.get("ram_max", latest["ram"]),
+
+        "disk": latest["disk"],
+        "disk_avg": latest.get("disk_avg", latest["disk"]),
+        "disk_min": latest.get("disk_min", latest["disk"]),
+        "disk_max": latest.get("disk_max", latest["disk"]),
+
+        "temp": latest["temp"],
+        "temp_avg": latest.get("temp_avg", latest["temp"]),
+        "temp_min": latest.get("temp_min", latest["temp"]),
+        "temp_max": latest.get("temp_max", latest["temp"]),
+
+        "users": latest["users"],
+        "users_avg": latest.get("users_avg", latest["users"]),
+        "users_min": latest.get("users_min", latest["users"]),
+        "users_max": latest.get("users_max", latest["users"]),
+    }
+
+    return jsonify({"metrics": metrics, "status": connection_status})
+
 
 # -------------- Telegram, 2FA --------------
 

@@ -1,33 +1,30 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Редактирование сервера</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-<h1>Редактировать сервер</h1>
-<nav>
-    <a href="{{ url_for('servers_list') }}">К списку</a> |
-    <a href="{{ url_for('logout') }}">Выйти</a>
-</nav>
-<form method="POST">
-    <label for="name">Название:</label>
-    <input type="text" name="name" value="{{ server.name }}" required><br>
+{% extends "base.html" %}
+{% block title %}Редактировать сервер{% endblock %}
+{% block content %}
+<h1 class="page-title">Редактировать сервер</h1>
 
-    <label for="ip">IP:</label>
-    <input type="text" name="ip" value="{{ server.ip }}" required><br>
-
-    <label for="port">Порт:</label>
-    <input type="number" name="port" value="{{ server.port }}" required><br>
-
-    <label for="ssh_user">SSH пользователь:</label>
-    <input type="text" name="ssh_user" value="{{ server.ssh_user }}"><br>
-
-    <label for="ssh_password">SSH пароль:</label>
-    <input type="password" name="ssh_password" value="{{ server.ssh_password }}"><br>
-
-    <button type="submit">Сохранить</button>
-</form>
-</body>
-</html>
+{% if server %}
+<div class="connect-form">
+    <form method="POST">
+        <div class="input-group">
+            <input type="text" name="name" value="{{ server.name }}" placeholder="Название" required>
+        </div>
+        <div class="input-group">
+            <input type="text" name="ip" value="{{ server.ip }}" placeholder="IP" required>
+        </div>
+        <div class="input-group">
+            <input type="number" name="port" value="{{ server.port }}" placeholder="Порт" required>
+        </div>
+        <div class="input-group">
+            <input type="text" name="ssh_user" value="{{ server.ssh_user }}" placeholder="SSH пользователь" required>
+        </div>
+        <div class="input-group">
+            <input type="password" name="ssh_password" value="{{ server.ssh_password }}" placeholder="SSH пароль" required>
+        </div>
+        <button type="submit">💾 Сохранить</button>
+    </form>
+</div>
+{% else %}
+<p>Сервер не найден.</p>
+{% endif %}
+{% endblock %}

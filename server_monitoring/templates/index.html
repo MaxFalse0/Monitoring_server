@@ -1,81 +1,71 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Мониторинг сервера</title>
-    <link rel="stylesheet" href="/static/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-</head>
-<body>
-<h1>Мониторинг сервера (Главная)</h1>
-<nav>
-    <a href="{{ url_for('tg_connect') }}">Подключить Telegram</a> |
-    <a href="{{ url_for('twofa_setup') }}">2FA</a> |
-    <a href="{{ url_for('servers_list') }}">Серверы</a> |
-    <a href="{{ url_for('report') }}">Отчёт</a> |
-    <a href="{{ url_for('export_data') }}">Экспорт CSV</a> |
-    <a href="{{ url_for('dashboard_custom') }}">Дашборд</a> |
-    <a href="{{ url_for('logout') }}">Выйти</a>
-</nav>
+{% extends "base.html" %}
+{% block title %}Главная{% endblock %}
+{% block content %}
+<h1 class="page-title">Панель управления</h1>
 
-<!-- Форма подключения вручную -->
-<form method="POST" action="{{ url_for('dashboard') }}">
-    <label for="server_ip">IP сервера:</label>
-    <input type="text" id="server_ip" name="server_ip" required><br>
-    <label for="server_port">Порт:</label>
-    <input type="number" id="server_port" name="server_port" value="22" required><br>
-    <label for="username">SSH пользователь:</label>
-    <input type="text" id="username" name="username" required><br>
-    <label for="password">SSH пароль:</label>
-    <input type="password" id="password" name="password" required><br>
-    <button type="submit">Начать мониторинг (ручной ввод)</button>
-</form>
+<div class="grid-dashboard">
+    <a href="{{ url_for('dashboard') }}" class="tile">
+        <svg xmlns="http://www.w3.org/2000/svg" class="tile-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 6h18M3 14h18M3 18h18"/>
+        </svg>
+        <span>Подключение</span>
+    </a>
+    <a href="{{ url_for('report') }}" class="tile">
+        <svg xmlns="http://www.w3.org/2000/svg" class="tile-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6h13M3 6v12a2 2 0 002 2h14a2 2 0 002-2V6"/>
+        </svg>
+        <span>Отчёты</span>
+    </a>
+    <a href="{{ url_for('dashboard_custom') }}" class="tile">
+        <svg xmlns="http://www.w3.org/2000/svg" class="tile-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3h10M11 7h10M4 11h17M4 15h17M4 19h17"/>
+        </svg>
+        <span>Графики</span>
+    </a>
+    <a href="{{ url_for('servers_list') }}" class="tile">
+        <svg xmlns="http://www.w3.org/2000/svg" class="tile-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+        </svg>
+        <span>Серверы</span>
+    </a>
+    <a href="{{ url_for('tg_connect') }}" class="tile">
+        <svg xmlns="http://www.w3.org/2000/svg" class="tile-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M21.05 2.87a.5.5 0 00-.69-.06l-18 13.5a.5.5 0 00.34.9h5.31l1.5 5.25a.5.5 0 00.95.13l2.5-6.88 5.63 3.75a.5.5 0 00.77-.27l2.5-13.5a.5.5 0 00-.31-.57z"/>
+        </svg>
+        <span>Telegram</span>
+    </a>
+    <a href="{{ url_for('twofa_setup') }}" class="tile">
+        <svg xmlns="http://www.w3.org/2000/svg" class="tile-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0 .552-.448 1-1 1s-1-.448-1-1 .448-1 1-1 1 .448 1 1zm0 4v2M5 12V5a2 2 0 012-2h10a2 2 0 012 2v7a2 2 0 01-2 2h-1.586l-1.707 1.707a1 1 0 01-1.414 0L9.586 14H8a2 2 0 01-2-2z"/>
+        </svg>
+        <span>2FA</span>
+    </a>
+</div>
 
-<hr>
-
-<!-- Подключение из списка -->
-<form method="POST" action="{{ url_for('connect_existing_server') }}">
-    <label for="server_id">Выбрать сервер из списка:</label>
-    <select id="server_id" name="server_id" required>
-        <option value="">-- Выберите --</option>
+<div class="connect-form island" style="margin-top: 40px;">
+    <h2>Подключить новый сервер</h2>
+    <form method="POST">
+        <div class="input-group">
+            <input type="text" name="server_ip" placeholder="IP адрес" required>
+        </div>
+        <div class="input-group">
+            <input type="number" name="server_port" placeholder="Порт" value="22" required>
+        </div>
+        <div class="input-group">
+            <input type="text" name="username" placeholder="SSH пользователь" required>
+        </div>
+        <div class="input-group">
+            <input type="password" name="password" placeholder="SSH пароль" required>
+        </div>
+        <button type="submit">🔌 Подключить</button>
+    </form>
+</div>
+{% endblock %}
+<form method="POST" action="/connect_existing_server">
+    <select name="server_id">
         {% for s in servers %}
-            <option value="{{ s.id }}">{{ s.name }} ({{ s.ip }}:{{ s.port }})</option>
+            <option value="{{ s.id }}">{{ s.name }}</option>
         {% endfor %}
     </select>
-    <button type="submit">Подключиться к выбранному</button>
+    <button type="submit">🔌 Подключиться</button>
 </form>
-
-<p class="message">{{ message }}</p>
-{% if status.error %}
-    <p class="error">{{ status.error }}</p>
-{% endif %}
-
-<!-- Метрики -->
-<div id="metrics-container">
-    <h2>Последние метрики:</h2>
-    <p>CPU: <span id="cpu" class="metric-value">--</span></p>
-    <p>RAM: <span id="ram" class="metric-value">--</span></p>
-    <p>Disk: <span id="disk" class="metric-value">--</span></p>
-    <p>Net RX: <span id="net-rx" class="metric-value">--</span></p>
-    <p>Net TX: <span id="net-tx" class="metric-value">--</span></p>
-    <p>Пользователи: <span id="users" class="metric-value">--</span></p>
-    <p>Температура: <span id="temp" class="metric-value">--</span></p>
-    <p>Последнее обновление: <span id="last-update">Никогда</span></p>
-</div>
-
-<!-- Графики -->
-<div style="display:flex; flex-wrap:wrap; justify-content:center;">
-    <canvas id="metricsChart1" width="400" height="300"></canvas>
-    <canvas id="metricsChart2" width="400" height="300"></canvas>
-</div>
-
-<script src="/static/chart.js"></script>
-<!-- Новые графики -->
-<div style="display:flex; flex-wrap:wrap; justify-content:center;">
-    <canvas id="metricsChart3" width="400" height="300"></canvas>
-    <canvas id="metricsChart4" width="400" height="300"></canvas>
-</div>
-
-</body>
-</html>

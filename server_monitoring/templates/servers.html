@@ -1,54 +1,52 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Мои сервера</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-<h1>Список серверов</h1>
-<nav>
-    <a href="{{ url_for('dashboard') }}">Главная</a> |
-    <a href="{{ url_for('logout') }}">Выйти</a>
-</nav>
+{% extends "base.html" %}
+{% block title %}Серверы{% endblock %}
+{% block content %}
+<h1 class="page-title">Серверы</h1>
 
-<ul style="list-style:none; padding:0;">
-{% for s in servers %}
-    <li style="margin-bottom:15px; background:#fff; padding:10px; border-radius:5px; box-shadow:0 0 5px rgba(0,0,0,0.1);">
-        <strong>{{ s.name }}</strong> ({{ s.ip }}:{{ s.port }})
-        <br>
-        <a href="{{ url_for('servers_edit', server_id=s.id) }}" style="padding:6px; background:blue; color:#fff; text-decoration:none; border-radius:3px; margin-right:10px;">Редактировать</a>
-        <form action="{{ url_for('servers_delete', server_id=s.id) }}" method="POST" style="display:inline;">
-            <button style="background:red; color:#fff; padding:6px; border:none; border-radius:3px;" onclick="return confirm('Удалить {{ s.name }}?')">Удалить</button>
-        </form>
-    </li>
-{% endfor %}
-</ul>
+<div class="table-box">
+    <h2>Список</h2>
+    <table>
+        <thead>
+            <tr><th>Название</th><th>IP</th><th>Порт</th><th>Пользователь</th><th>Действия</th></tr>
+        </thead>
+        <tbody>
+            {% for s in servers %}
+            <tr>
+                <td>{{ s.name }}</td>
+                <td>{{ s.ip }}</td>
+                <td>{{ s.port }}</td>
+                <td>{{ s.ssh_user }}</td>
+                <td>
+                    <a href="{{ url_for('servers_edit', server_id=s.id) }}" class="btn">Редактировать</a>
+                    <form method="POST" action="{{ url_for('servers_delete', server_id=s.id) }}" style="display:inline;">
+                        <button class="btn" style="background:var(--danger);color:#fff;" type="submit">Удалить</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 
-<hr>
-<h2>Добавить сервер</h2>
-<form method="POST">
-    <label for="name">Название:</label>
-    <input type="text" name="name" required><br>
-
-    <label for="ip">IP:</label>
-    <input type="text" name="ip" required><br>
-
-    <label for="port">Порт:</label>
-    <input type="number" name="port" value="22" required><br>
-
-    <label for="ssh_user">SSH пользователь:</label>
-    <input type="text" name="ssh_user"><br>
-
-    <label for="ssh_password">SSH пароль:</label>
-    <input type="password" name="ssh_password"><br>
-
-    <button style="margin-top:10px;">Добавить</button>
-</form>
-
-{% if is_admin %}
-    <p style="color:green;">Вы администратор и видите все сервера</p>
-{% endif %}
-
-</body>
-</html>
+<div class="connect-form" style="margin-top:40px;">
+    <h2>Добавить сервер</h2>
+    <form method="POST">
+        <div class="input-group">
+            <input type="text" name="name" placeholder="Название" required>
+        </div>
+        <div class="input-group">
+            <input type="text" name="ip" placeholder="IP" required>
+        </div>
+        <div class="input-group">
+            <input type="number" name="port" placeholder="Порт" value="22" required>
+        </div>
+        <div class="input-group">
+            <input type="text" name="ssh_user" placeholder="SSH пользователь" required>
+        </div>
+        <div class="input-group">
+            <input type="password" name="ssh_password" placeholder="SSH пароль" required>
+        </div>
+        <button type="submit">➕ Добавить</button>
+    </form>
+</div>
+{% endblock %}
