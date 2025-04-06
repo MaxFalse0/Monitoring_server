@@ -22,6 +22,8 @@ TWOFA_CODE_LENGTH = 6
 # Храним записи метрик только 30 дней
 DATA_RETENTION_DAYS = 30
 
+REMOTE_TEMP_SCRIPT = "/tmp/get_temp.sh"
+
 # Роли
 ROLES = ("admin", "user")
 

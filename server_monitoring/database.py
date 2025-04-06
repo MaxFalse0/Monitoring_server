@@ -261,14 +261,14 @@ def get_metrics_for_period(user_id, role, days=1):
     cursor = conn.cursor()
     if role == 'admin':
         cursor.execute('''
-            SELECT cpu, ram, disk, users, temp, timestamp
+            SELECT cpu, ram, disk, users, temp, net_rx, net_tx, timestamp
             FROM metrics
             WHERE timestamp >= datetime('now', ?)
             ORDER BY timestamp ASC
         ''', (f'-{days} days',))
     else:
         cursor.execute('''
-            SELECT cpu, ram, disk, users, temp, timestamp
+            SELECT cpu, ram, disk, users, temp, net_rx, net_tx, timestamp
             FROM metrics
             WHERE user_id=?
               AND timestamp >= datetime('now', ?)

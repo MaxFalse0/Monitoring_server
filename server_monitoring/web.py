@@ -201,9 +201,21 @@ def get_data():
         "users_avg": latest.get("users_avg", latest["users"]),
         "users_min": latest.get("users_min", latest["users"]),
         "users_max": latest.get("users_max", latest["users"]),
+
+        # 👇 ДОБАВЛЯЕМ СЕТЬ
+        "rx": latest["net_rx"],
+        "tx": latest["net_tx"],
+        "rx_avg": latest.get("rx_avg", latest["net_rx"]),
+        "rx_min": latest.get("rx_min", latest["net_rx"]),
+        "rx_max": latest.get("rx_max", latest["net_rx"]),
+
+        "tx_avg": latest.get("tx_avg", latest["net_tx"]),
+        "tx_min": latest.get("tx_min", latest["net_tx"]),
+        "tx_max": latest.get("tx_max", latest["net_tx"]),
     }
 
     return jsonify({"metrics": metrics, "status": connection_status})
+
 
 
 # -------------- Telegram, 2FA --------------
@@ -363,6 +375,14 @@ def report():
     disks  = [r[2] for r in rows]
     users_ = [r[3] for r in rows]
     temps  = [r[4] for r in rows]
+    net_rxs = [r[5] for r in rows]
+    net_txs = [r[6] for r in rows]
+
+    net_rx_min, net_rx_max = min(net_rxs), max(net_rxs)
+    net_rx_avg = sum(net_rxs) / len(net_rxs)
+
+    net_tx_min, net_tx_max = min(net_txs), max(net_txs)
+    net_tx_avg = sum(net_txs) / len(net_txs)
 
     cpu_min, cpu_max = min(cpus), max(cpus)
     cpu_avg = sum(cpus)/len(cpus)
@@ -385,7 +405,14 @@ def report():
                            ram_min=ram_min, ram_max=ram_max, ram_avg=ram_avg,
                            disk_min=disk_min, disk_max=disk_max, disk_avg=disk_avg,
                            users_min=users_min, users_max=users_max, users_avg=users_avg,
-                           temp_min=temp_min, temp_max=temp_max, temp_avg=temp_avg
+                           temp_min=temp_min, temp_max=temp_max, temp_avg=temp_avg,
+                           net_rx_min = net_rx_min / 1024 / 1024,
+                           net_rx_max = net_rx_max / 1024 / 1024,
+                           net_rx_avg = net_rx_avg / 1024 / 1024,
+                           net_tx_min = net_tx_min / 1024 / 1024,
+                           net_tx_max = net_tx_max / 1024 / 1024,
+                           net_tx_avg = net_tx_avg / 1024 / 1024
+
     )
 
 # -------------- Экспорт CSV --------------

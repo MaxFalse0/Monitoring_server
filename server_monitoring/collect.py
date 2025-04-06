@@ -1,85 +1,114 @@
 import paramiko
-from server_monitoring.analyze import check_alerts
-from server_monitoring import database
-from flask_socketio import SocketIO, emit
-
-# socketio нужно либо импортировать отдельно,
-# либо передавать как параметр. Предположим, что у нас общий объект.
-from server_monitoring.socketio_manager import socketio  # Если circular import, выносим socketio в init.
+import time
+from .config import REMOTE_TEMP_SCRIPT
+from .database import save_metrics
+import os
 
 
-def get_server_metrics(server_ip, server_port, username, password):
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+def get_net_bytes(client):
+    cmd = """
+        awk '
+        NR>2 {
+            iface=$1;
+            gsub(":", "", iface);
+            if (iface !~ /lo|docker|veth|br|virbr|vmnet/) {
+                rx+=$2;
+                tx+=$10;
+            }
+        }
+        END {
+            print rx, tx;
+        }' /proc/net/dev
+    """
     try:
-        print(f"Connecting to {server_ip}:{server_port}...")
-        client.connect(server_ip, port=server_port, username=username, password=password)
-        print("Connection established.")
+        stdin, stdout, stderr = client.exec_command(cmd)
+        out = stdout.read().decode().strip().split()
+        if len(out) == 2:
+            return float(out[0]), float(out[1])
+    except Exception as e:
+        print(f"[NET ERROR] {e}")
+    return 0.0, 0.0
 
-        # CPU
-        stdin, stdout, stderr = client.exec_command(
-            "top -bn1 | grep 'Cpu' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'"
-        )
-        cpu = stdout.read().decode().strip()
 
-        # RAM
-        stdin, stdout, stderr = client.exec_command("free | grep Mem | awk '{print $3/$2 * 100.0}'")
-        ram = stdout.read().decode().strip()
+def get_temp(client):
+    try:
+        sftp = client.open_sftp()
+        sftp.put("server_monitoring/static/scripts/get_temp.sh", REMOTE_TEMP_SCRIPT)
+        sftp.chmod(REMOTE_TEMP_SCRIPT, 0o755)
+        sftp.close()
 
-        # Disk
-        stdin, stdout, stderr = client.exec_command("df / | awk '/\\// {print $5}' | sed 's/%//'")
-        disk = stdout.read().decode().strip()
+        stdin, stdout, _ = client.exec_command(f"bash {REMOTE_TEMP_SCRIPT}")
+        temp_str = stdout.read().decode().strip()
 
-        # Net
-        cmd_net = "cat /proc/net/dev | grep -v 'lo:' | grep ':' | head -n 1 | awk '{print $2, $10}'"
-        stdin, stdout, stderr = client.exec_command(cmd_net)
-        net_data = stdout.read().decode().strip().split()
-        net_rx, net_tx = map(float, net_data) if len(net_data) == 2 else (0.0, 0.0)
+        if temp_str and temp_str.replace('.', '', 1).isdigit():
+            temp = float(temp_str)
+            return temp if temp > 0 else None
+        else:
+            return None
+    except Exception as e:
+        print(f"[TEMP ERROR] {e}")
+        return None
 
-        # Users
-        stdin, stdout, stderr = client.exec_command("who | wc -l")
-        users = int(stdout.read().decode().strip())
 
-        # Temperature
-        stdin, stdout, stderr = client.exec_command("cat /sys/class/thermal/thermal_zone0/temp")
-        temp_raw = stdout.read().decode().strip()
-        temp = float(temp_raw) / 1000 if temp_raw.isdigit() else 0.0
 
-        if not cpu or not ram or not disk:
-            raise ValueError("Error getting CPU/RAM/Disk")
+def collect_metrics(server_ip, port, ssh_user, ssh_password, status_dict, tg_username, user_id):
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(server_ip, port=port, username=ssh_user, password=ssh_password, timeout=10)
 
-        cpu, ram, disk = float(cpu), float(ram), float(disk)
-        print(
-            f"Metrics collected: CPU={cpu}%, RAM={ram}%, Disk={disk}%, Users={users}, Temp={temp}°C, Net RX={net_rx}, Net TX={net_tx}")
-        return cpu, ram, disk, net_rx, net_tx, users, temp
+        while True:
+            stdin, stdout, _ = client.exec_command("top -bn1 | grep '%Cpu' | awk '{print 100 - $8}'")
+            cpu = float(stdout.read().decode().strip())
+
+            stdin, stdout, _ = client.exec_command("free | grep Mem | awk '{print $3/$2 * 100.0}'")
+            ram = float(stdout.read().decode().strip())
+
+            stdin, stdout, _ = client.exec_command("df / | tail -1 | awk '{print $5}'")
+            disk = float(stdout.read().decode().strip().replace('%', ''))
+
+            stdin, stdout, _ = client.exec_command("who | wc -l")
+            users = int(stdout.read().decode().strip())
+
+            temp = get_temp(client)
+
+            rx1, tx1 = get_net_bytes(client)
+            time.sleep(2)
+            rx2, tx2 = get_net_bytes(client)
+            delta_rx = rx2 - rx1
+            delta_tx = tx2 - tx1
+
+            net_rx = delta_rx / 2  # B/s
+            net_tx = delta_tx / 2  # B/s
+
+            metrics = {
+                "cpu": round(cpu, 1),
+                "ram": round(ram, 4),
+                "disk": round(disk, 1),
+                "users": users,
+                "temp": round(temp, 1) if temp is not None else None,
+                "net_rx": round(net_rx, 2),
+                "net_tx": round(net_tx, 2)
+            }
+
+            print(
+                f"Metrics: CPU={metrics['cpu']}%, RAM={metrics['ram']}%, Disk={metrics['disk']}%, Users={users}, Temp={metrics['temp']}°C, RX={net_rx} B/s, TX={net_tx} B/s")
+
+            save_metrics(
+                user_id=user_id,
+                cpu=metrics["cpu"],
+                ram=metrics["ram"],
+                disk=metrics["disk"],
+                users=metrics["users"],
+                temp=metrics["temp"],
+                net_rx=metrics["net_rx"],
+                net_tx=metrics["net_tx"]
+            )
+
+            status_dict["status"] = "Сервер подключён и данные собираются"
+            status_dict["error"] = None
 
     except Exception as e:
-        print(f"Error collecting metrics: {e}")
-        return None, None, None, None, None, None, None
-    finally:
-        client.close()
-
-
-def collect_metrics(server_ip, server_port, username, password,
-                    connection_status, telegram_username=None, user_id=None):
-    result = get_server_metrics(server_ip, server_port, username, password)
-    if None not in result:
-        cpu, ram, disk, net_rx, net_tx, users, temp = result
-        database.save_metrics(user_id, cpu, ram, disk, net_rx, net_tx, users, temp)
-        connection_status["status"] = "Connection successful, metrics collected"
-        connection_status["error"] = None
-
-        # WebSocket push
-        socketio.emit("new_metrics", {
-            "cpu": cpu, "ram": ram, "disk": disk,
-            "net_rx": net_rx, "net_tx": net_tx,
-            "users": users, "temp": temp
-        })
-
-        try:
-            check_alerts(cpu, ram, disk, telegram_username, users, temp)
-        except Exception as e:
-            print(f"Error in check_alerts: {e}")
-    else:
-        connection_status["status"] = "Connection error"
-        connection_status["error"] = "Failed to collect metrics. Check server data."
+        print(f"[COLLECT ERROR] {e}")
+        status_dict["status"] = "Ошибка подключения"
+        status_dict["error"] = str(e)

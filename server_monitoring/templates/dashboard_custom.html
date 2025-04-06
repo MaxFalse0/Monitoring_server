@@ -4,36 +4,20 @@
 <h1 class="page-title">Мониторинг в реальном времени</h1>
 
 <div class="grid-gauges">
-    <div class="gauge-box" onclick="toggleDetails('cpu')">
-        <canvas id="cpuGauge"></canvas>
-        <div class="chart-value" id="cpuValue">--%</div>
-        <div class="gauge-label">Процессор</div>
-        <div class="gauge-details" id="details-cpu" style="display:none;"></div>
+    {% for metric in ['cpu', 'ram', 'disk', 'temp', 'users', 'rx', 'tx'] %}
+    <div class="gauge-box" {% if metric not in ['rx', 'tx'] %}onclick="toggleDetails('{{ metric }}')" {% endif %}>
+        <canvas id="{{ metric }}Gauge"></canvas>
+        <div class="chart-value" id="{{ metric }}Value">--</div>
+        <div class="gauge-label">
+            {% if metric == 'cpu' %}Процессор{% elif metric == 'ram' %}Оперативная память{% elif metric == 'disk' %}Диск
+            {% elif metric == 'temp' %}Температура{% elif metric == 'users' %}Пользователи
+            {% elif metric == 'rx' %}Сеть ↓ (RX){% elif metric == 'tx' %}Сеть ↑ (TX){% endif %}
+        </div>
+        {% if metric not in ['rx', 'tx'] %}
+        <div class="gauge-details" id="details-{{ metric }}" style="display:none;"></div>
+        {% endif %}
     </div>
-    <div class="gauge-box" onclick="toggleDetails('ram')">
-        <canvas id="ramGauge"></canvas>
-        <div class="chart-value" id="ramValue">--%</div>
-        <div class="gauge-label">Оперативная память</div>
-        <div class="gauge-details" id="details-ram" style="display:none;"></div>
-    </div>
-    <div class="gauge-box" onclick="toggleDetails('disk')">
-        <canvas id="diskGauge"></canvas>
-        <div class="chart-value" id="diskValue">--%</div>
-        <div class="gauge-label">Диск</div>
-        <div class="gauge-details" id="details-disk" style="display:none;"></div>
-    </div>
-    <div class="gauge-box" onclick="toggleDetails('temp')">
-        <canvas id="tempGauge"></canvas>
-        <div class="chart-value" id="tempValue">--°C</div>
-        <div class="gauge-label">Температура</div>
-        <div class="gauge-details" id="details-temp" style="display:none;"></div>
-    </div>
-    <div class="gauge-box" onclick="toggleDetails('users')">
-        <canvas id="usersGauge"></canvas>
-        <div class="chart-value" id="usersValue">--</div>
-        <div class="gauge-label">Пользователи</div>
-        <div class="gauge-details" id="details-users" style="display:none;"></div>
-    </div>
+    {% endfor %}
 </div>
 
 <p style="margin-top:20px;">Последнее обновление: <span id="last-update">--:--</span></p>
@@ -46,15 +30,25 @@ const gauges = {
     ram: 'ramGauge',
     disk: 'diskGauge',
     temp: 'tempGauge',
-    users: 'usersGauge'
+    users: 'usersGauge',
+    rx: 'rxGauge',
+    tx: 'txGauge'
 };
-const charts = {};
 
-function createGauge(ctx, label) {
+const charts = {};
+const history = {
+    cpu: [],
+    ram: [],
+    disk: [],
+    temp: [],
+    users: []
+};
+const netHistory = { rx: [], tx: [] };
+
+function createGauge(ctx) {
     return new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: [label],
             datasets: [{
                 data: [0, 100],
                 backgroundColor: ['#5a5f72', '#2c2c2c'],
@@ -76,7 +70,38 @@ function createGauge(ctx, label) {
 
 for (const key in gauges) {
     const ctx = document.getElementById(gauges[key]).getContext('2d');
-    charts[key] = createGauge(ctx, key.toUpperCase());
+    charts[key] = createGauge(ctx);
+}
+
+function formatNetSpeed(bytes) {
+    const b = parseFloat(bytes);
+    if (isNaN(b) || b < 0) return "0 B/s";
+    if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(2) + " MB/s";
+    if (b >= 1024) return (b / 1024).toFixed(1) + " KB/s";
+    return b.toFixed(0) + " B/s";
+}
+
+function scaleNetDynamic(value, historyArr) {
+    const b = parseFloat(value);
+    if (isNaN(b)) {
+        historyArr.push(0);
+        return [0, 100];
+    }
+    historyArr.push(b);
+    if (historyArr.length > 50) historyArr.shift();
+    const peak = Math.max(...historyArr, 1);
+    const percent = Math.min((b / peak) * 100, 100);
+    return [percent, 100 - percent];
+}
+
+function updateHistory(key, value) {
+    const arr = history[key];
+    arr.push(value);
+    if (arr.length > 50) arr.shift();
+    const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
+    const min = Math.min(...arr);
+    const max = Math.max(...arr);
+    return { avg: avg.toFixed(2), min: min.toFixed(2), max: max.toFixed(2) };
 }
 
 function updateDetails(key, label, value, min, max, unit = '%') {
@@ -87,35 +112,46 @@ function updateDetails(key, label, value, min, max, unit = '%') {
             <p><strong>Макс:</strong> ${max}${unit}</p>
         </div>
     `;
-    document.getElementById("details-" + key).innerHTML = details;
+    const block = document.getElementById("details-" + key);
+    if (block) block.innerHTML = details;
 }
 
 function updateGauges(data) {
     if (!data) return;
 
+    const cpuStats = updateHistory("cpu", data.cpu);
+    const ramStats = updateHistory("ram", data.ram);
+    const diskStats = updateHistory("disk", data.disk);
+    const tempStats = updateHistory("temp", data.temp ?? 0);
+    const usersStats = updateHistory("users", data.users);
+
     charts.cpu.data.datasets[0].data = [data.cpu, 100 - data.cpu];
     charts.ram.data.datasets[0].data = [data.ram, 100 - data.ram];
     charts.disk.data.datasets[0].data = [data.disk, 100 - data.disk];
-    charts.temp.data.datasets[0].data = [data.temp, 100 - data.temp];
+    charts.temp.data.datasets[0].data = [data.temp ?? 0, 100 - (data.temp ?? 0)];
     charts.users.data.datasets[0].data = [data.users, Math.max(0, 50 - data.users)];
 
-    charts.cpu.update();
-    charts.ram.update();
-    charts.disk.update();
-    charts.temp.update();
-    charts.users.update();
+    const rxVal = parseFloat(data.net_rx ?? data.rx ?? 0);
+    const txVal = parseFloat(data.net_tx ?? data.tx ?? 0);
+
+    charts.rx.data.datasets[0].data = scaleNetDynamic(rxVal, netHistory.rx);
+    charts.tx.data.datasets[0].data = scaleNetDynamic(txVal, netHistory.tx);
+
+    for (let key in charts) charts[key].update();
 
     document.getElementById("cpuValue").textContent = data.cpu + "%";
     document.getElementById("ramValue").textContent = data.ram + "%";
     document.getElementById("diskValue").textContent = data.disk + "%";
-    document.getElementById("tempValue").textContent = data.temp + "°C";
+    document.getElementById("tempValue").textContent = data.temp && data.temp > 0 ? data.temp + "°C" : "N/A";
     document.getElementById("usersValue").textContent = data.users;
+    document.getElementById("rxValue").textContent = formatNetSpeed(rxVal);
+    document.getElementById("txValue").textContent = formatNetSpeed(txVal);
 
-    updateDetails("cpu", "CPU", data.cpu_avg, data.cpu_min, data.cpu_max);
-    updateDetails("ram", "RAM", data.ram_avg, data.ram_min, data.ram_max);
-    updateDetails("disk", "Disk", data.disk_avg, data.disk_min, data.disk_max);
-    updateDetails("temp", "Temp", data.temp_avg, data.temp_min, data.temp_max, "°C");
-    updateDetails("users", "Пользователи", data.users_avg, data.users_min, data.users_max, "");
+    updateDetails("cpu", "CPU", cpuStats.avg, cpuStats.min, cpuStats.max);
+    updateDetails("ram", "RAM", ramStats.avg, ramStats.min, ramStats.max);
+    updateDetails("disk", "Disk", diskStats.avg, diskStats.min, diskStats.max);
+    updateDetails("temp", "Temp", tempStats.avg, tempStats.min, tempStats.max, "°C");
+    updateDetails("users", "Пользователи", usersStats.avg, usersStats.min, usersStats.max, "");
 
     document.getElementById("last-update").textContent = new Date().toLocaleTimeString();
 }
