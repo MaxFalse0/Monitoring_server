@@ -50,65 +50,80 @@ def get_temp(client):
         return None
 
 
-
 def collect_metrics(server_ip, port, ssh_user, ssh_password, status_dict, tg_username, user_id):
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(server_ip, port=port, username=ssh_user, password=ssh_password, timeout=10)
 
-        while True:
-            stdin, stdout, _ = client.exec_command("top -bn1 | grep '%Cpu' | awk '{print 100 - $8}'")
-            cpu = float(stdout.read().decode().strip())
+        status_dict["active"] = True
+        status_dict["server"] = f"{server_ip}:{port}"
 
-            stdin, stdout, _ = client.exec_command("free | grep Mem | awk '{print $3/$2 * 100.0}'")
-            ram = float(stdout.read().decode().strip())
+        while status_dict.get("active", False):
+            try:
+                stdin, stdout, _ = client.exec_command("top -bn1 | grep '%Cpu' | awk '{print 100 - $8}'")
+                cpu = float(stdout.read().decode().strip())
 
-            stdin, stdout, _ = client.exec_command("df / | tail -1 | awk '{print $5}'")
-            disk = float(stdout.read().decode().strip().replace('%', ''))
+                stdin, stdout, _ = client.exec_command("free | grep Mem | awk '{print $3/$2 * 100.0}'")
+                ram = float(stdout.read().decode().strip())
 
-            stdin, stdout, _ = client.exec_command("who | wc -l")
-            users = int(stdout.read().decode().strip())
+                stdin, stdout, _ = client.exec_command("df / | tail -1 | awk '{print $5}'")
+                disk = float(stdout.read().decode().strip().replace('%', ''))
 
-            temp = get_temp(client)
+                stdin, stdout, _ = client.exec_command("who | wc -l")
+                users = int(stdout.read().decode().strip())
 
-            rx1, tx1 = get_net_bytes(client)
-            time.sleep(2)
-            rx2, tx2 = get_net_bytes(client)
-            delta_rx = rx2 - rx1
-            delta_tx = tx2 - tx1
+                temp = get_temp(client)
 
-            net_rx = delta_rx / 2  # B/s
-            net_tx = delta_tx / 2  # B/s
+                rx1, tx1 = get_net_bytes(client)
+                time.sleep(2)
+                rx2, tx2 = get_net_bytes(client)
+                delta_rx = rx2 - rx1
+                delta_tx = tx2 - tx1
 
-            metrics = {
-                "cpu": round(cpu, 1),
-                "ram": round(ram, 4),
-                "disk": round(disk, 1),
-                "users": users,
-                "temp": round(temp, 1) if temp is not None else None,
-                "net_rx": round(net_rx, 2),
-                "net_tx": round(net_tx, 2)
-            }
+                net_rx = delta_rx / 2  # B/s
+                net_tx = delta_tx / 2  # B/s
 
-            print(
-                f"Metrics: CPU={metrics['cpu']}%, RAM={metrics['ram']}%, Disk={metrics['disk']}%, Users={users}, Temp={metrics['temp']}°C, RX={net_rx} B/s, TX={net_tx} B/s")
+                metrics = {
+                    "cpu": round(cpu, 1),
+                    "ram": round(ram),
+                    "disk": round(disk, 1),
+                    "users": users,
+                    "temp": round(temp, 1) if temp is not None else None,
+                    "net_rx": round(net_rx, 2),
+                    "net_tx": round(net_tx, 2)
+                }
 
-            save_metrics(
-                user_id=user_id,
-                cpu=metrics["cpu"],
-                ram=metrics["ram"],
-                disk=metrics["disk"],
-                users=metrics["users"],
-                temp=metrics["temp"],
-                net_rx=metrics["net_rx"],
-                net_tx=metrics["net_tx"]
-            )
+                print(
+                    f"Metrics: CPU={metrics['cpu']}%, RAM={metrics['ram']}%, Disk={metrics['disk']}%, Users={users}, "
+                    f"Temp={metrics['temp']}°C, RX={net_rx} B/s, TX={net_tx} B/s")
 
-            status_dict["status"] = "Сервер подключён и данные собираются"
-            status_dict["error"] = None
+                save_metrics(
+                    user_id=user_id,
+                    cpu=metrics["cpu"],
+                    ram=metrics["ram"],
+                    disk=metrics["disk"],
+                    users=metrics["users"],
+                    temp=metrics["temp"],
+                    net_rx=metrics["net_rx"],
+                    net_tx=metrics["net_tx"]
+                )
+
+                status_dict["status"] = "Сервер подключён и данные собираются"
+                status_dict["error"] = None
+
+            except Exception as inner_e:
+                print(f"[LOOP ERROR] {inner_e}")
+                status_dict["error"] = str(inner_e)
+                status_dict["status"] = "Ошибка сбора данных"
+                time.sleep(3)
+
+        client.close()
 
     except Exception as e:
         print(f"[COLLECT ERROR] {e}")
         status_dict["status"] = "Ошибка подключения"
         status_dict["error"] = str(e)
+    finally:
+        status_dict["active"] = False
+        status_dict["server"] = None

@@ -35,6 +35,9 @@ UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
 
 # Расширяемый словарь статуса
 connection_status = {
-    "status": "Waiting for connection",
-    "error": None
+    "status": "Not connected",
+    "error": None,
+    "server": None,
+    "active": False
 }
+

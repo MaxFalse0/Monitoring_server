@@ -14,6 +14,9 @@ from server_monitoring.config import TWOFA_CODE_LENGTH, SOCKETIO_CORS_ALLOWED_OR
 from server_monitoring.config import connection_status
 from server_monitoring.database import get_metrics_for_period, get_all_metrics, get_server_by_id, get_user_by_id
 from server_monitoring.socketio_manager import socketio
+from server_monitoring.security import register_security_headers
+from flask_login import login_required
+
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -37,6 +40,7 @@ def check_session():
         else:
             return redirect(url_for("login"))
 
+
 # -------------- Авторизация --------------
 
 @app.route("/register", methods=["GET", "POST"])
@@ -50,6 +54,7 @@ def register():
         except Exception as e:
             return render_template("register.html", error=str(e))
     return render_template("register.html", error=None)
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -76,10 +81,12 @@ def login():
             return render_template("login.html", error="Неверный логин или пароль")
     return render_template("login.html", error=None)
 
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
 
 # -------------- Главная страница ("/") --------------
 
@@ -157,6 +164,7 @@ def connect_existing_server():
 
     return redirect(url_for("dashboard"))
 
+
 def get_user_servers():
     """
     Возвращает список серверов для текущего пользователя (или все, если admin)
@@ -167,6 +175,7 @@ def get_user_servers():
     role = session["role"]
     servers = database.get_servers_for_user(user_id, role)
     return servers
+
 
 @app.route("/data")
 def get_data():
@@ -216,7 +225,6 @@ def get_data():
     }
 
     return jsonify({"metrics": metrics, "status": connection_status})
-
 
 
 # -------------- Telegram, 2FA --------------
@@ -311,8 +319,7 @@ def resend_code():
     return jsonify({"status": "error", "message": "Нет Telegram-профиля"})
 
 
-
-@app.route("/twofa_setup", methods=["GET","POST"])
+@app.route("/twofa_setup", methods=["GET", "POST"])
 def twofa_setup():
     if "logged_in" not in session:
         return redirect(url_for("login"))
@@ -322,18 +329,19 @@ def twofa_setup():
         return render_template("twofa_setup.html",
                                error="Сначала подключите Telegram (/tg_connect)",
                                twofa_enabled=user["twofa_enabled"])
-    if request.method=="POST":
+    if request.method == "POST":
         action = request.form.get("action")
-        if action=="enable":
+        if action == "enable":
             database.set_twofa_enabled(user_id, True)
             send_telegram_alert(user["telegram_username"], "2FA включена.")
-        elif action=="disable":
+        elif action == "disable":
             database.set_twofa_enabled(user_id, False)
             send_telegram_alert(user["telegram_username"], "2FA выключена.")
         return redirect(url_for("twofa_setup"))
     return render_template("twofa_setup.html",
                            error=None,
                            twofa_enabled=user["twofa_enabled"])
+
 
 # -------------- Роли --------------
 
@@ -343,21 +351,22 @@ def set_role(target_user_id, role):
         return redirect(url_for("login"))
     if session.get("role") != "admin":
         return "Недостаточно прав"
-    if role not in ("admin","user"):
+    if role not in ("admin", "user"):
         return "Неверная роль"
     database.set_user_role(target_user_id, role)
     return f"Пользователю {target_user_id} назначена роль {role}"
 
+
 # -------------- Управление серверами --------------
 
-@app.route("/servers", methods=["GET","POST"])
+@app.route("/servers", methods=["GET", "POST"])
 def servers_list():
     if "logged_in" not in session:
         return redirect(url_for("login"))
     user_id = session["user_id"]
     role = session["role"]
 
-    if request.method=="POST":
+    if request.method == "POST":
         name = request.form["name"]
         ip = request.form["ip"]
         port = int(request.form["port"])
@@ -367,9 +376,10 @@ def servers_list():
         return redirect(url_for("servers_list"))
 
     servers = database.get_servers_for_user(user_id, role)
-    return render_template("servers.html", servers=servers, is_admin=(role=="admin"))
+    return render_template("servers.html", servers=servers, is_admin=(role == "admin"))
 
-@app.route("/servers/<int:server_id>/edit", methods=["GET","POST"])
+
+@app.route("/servers/<int:server_id>/edit", methods=["GET", "POST"])
 def servers_edit(server_id):
     if "logged_in" not in session:
         return redirect(url_for("login"))
@@ -381,7 +391,7 @@ def servers_edit(server_id):
     if role != "admin" and s["user_id"] != user_id:
         return "Недостаточно прав"
 
-    if request.method=="POST":
+    if request.method == "POST":
         name = request.form["name"]
         ip = request.form["ip"]
         port = int(request.form["port"])
@@ -391,6 +401,7 @@ def servers_edit(server_id):
         return redirect(url_for("servers_list"))
 
     return render_template("servers_edit.html", server=s)
+
 
 @app.route("/servers/<int:server_id>/delete", methods=["POST"])
 def servers_delete(server_id):
@@ -405,6 +416,7 @@ def servers_delete(server_id):
         return "Недостаточно прав"
     database.delete_server(server_id)
     return redirect(url_for("servers_list"))
+
 
 # -------------- Отчёты --------------
 
@@ -422,62 +434,65 @@ def report():
     except:
         days = 1
 
-    rows = get_metrics_for_period(user_id, role, days)
-    if not rows:
-        return f"Нет данных за последние {days} дн."
+    try:
+        rows = get_metrics_for_period(user_id, role, days)
+        if not rows:
+            return render_template("report.html", days=days)
 
-    # rows = [ (cpu, ram, disk, users, temp, rx, tx, timestamp), ... ]
-    cpus    = [r[0] for r in rows if r[0] is not None]
-    rams    = [r[1] for r in rows if r[1] is not None]
-    disks   = [r[2] for r in rows if r[2] is not None]
-    users_  = [r[3] for r in rows if r[3] is not None]
-    temps   = [r[4] for r in rows if r[4] is not None]
-    net_rxs = [r[5] for r in rows if r[5] is not None]
-    net_txs = [r[6] for r in rows if r[6] is not None]
+        cpus = [r[0] for r in rows if r[0] is not None]
+        rams = [r[1] for r in rows if r[1] is not None]
+        disks = [r[2] for r in rows if r[2] is not None]
+        users_ = [r[3] for r in rows if r[3] is not None]
+        temps = [r[4] for r in rows if r[4] is not None]
+        net_rxs = [r[5] for r in rows if r[5] is not None]
+        net_txs = [r[6] for r in rows if r[6] is not None]
 
-    # Защищённые расчёты
-    cpu_min = min(cpus) if cpus else None
-    cpu_max = max(cpus) if cpus else None
-    cpu_avg = sum(cpus)/len(cpus) if cpus else None
+        cpu_min = min(cpus) if cpus else None
+        cpu_max = max(cpus) if cpus else None
+        cpu_avg = sum(cpus) / len(cpus) if cpus else None
 
-    ram_min = min(rams) if rams else None
-    ram_max = max(rams) if rams else None
-    ram_avg = sum(rams)/len(rams) if rams else None
+        ram_min = min(rams) if rams else None
+        ram_max = max(rams) if rams else None
+        ram_avg = sum(rams) / len(rams) if rams else None
 
-    disk_min = min(disks) if disks else None
-    disk_max = max(disks) if disks else None
-    disk_avg = sum(disks)/len(disks) if disks else None
+        disk_min = min(disks) if disks else None
+        disk_max = max(disks) if disks else None
+        disk_avg = sum(disks) / len(disks) if disks else None
 
-    users_min = min(users_) if users_ else None
-    users_max = max(users_) if users_ else None
-    users_avg = sum(users_)/len(users_) if users_ else None
+        users_min = min(users_) if users_ else None
+        users_max = max(users_) if users_ else None
+        users_avg = sum(users_) / len(users_) if users_ else None
 
-    temp_min = min(temps) if temps else None
-    temp_max = max(temps) if temps else None
-    temp_avg = sum(temps)/len(temps) if temps else None
+        temp_min = min(temps) if temps else None
+        temp_max = max(temps) if temps else None
+        temp_avg = sum(temps) / len(temps) if temps else None
 
-    net_rx_min = min(net_rxs) if net_rxs else 0
-    net_rx_max = max(net_rxs) if net_rxs else 0
-    net_rx_avg = sum(net_rxs)/len(net_rxs) if net_rxs else 0
+        net_rx_min = min(net_rxs) if net_rxs else 0
+        net_rx_max = max(net_rxs) if net_rxs else 0
+        net_rx_avg = sum(net_rxs) / len(net_rxs) if net_rxs else 0
 
-    net_tx_min = min(net_txs) if net_txs else 0
-    net_tx_max = max(net_txs) if net_txs else 0
-    net_tx_avg = sum(net_txs)/len(net_txs) if net_txs else 0
+        net_tx_min = min(net_txs) if net_txs else 0
+        net_tx_max = max(net_txs) if net_txs else 0
+        net_tx_avg = sum(net_txs) / len(net_txs) if net_txs else 0
 
-    return render_template("report.html",
-        days=days,
-        cpu_min=cpu_min, cpu_max=cpu_max, cpu_avg=cpu_avg,
-        ram_min=ram_min, ram_max=ram_max, ram_avg=ram_avg,
-        disk_min=disk_min, disk_max=disk_max, disk_avg=disk_avg,
-        users_min=users_min, users_max=users_max, users_avg=users_avg,
-        temp_min=temp_min, temp_max=temp_max, temp_avg=temp_avg,
-        net_rx_min=net_rx_min / 1024 / 1024,
-        net_rx_max=net_rx_max / 1024 / 1024,
-        net_rx_avg=net_rx_avg / 1024 / 1024,
-        net_tx_min=net_tx_min / 1024 / 1024,
-        net_tx_max=net_tx_max / 1024 / 1024,
-        net_tx_avg=net_tx_avg / 1024 / 1024
-    )
+        return render_template("report.html",
+                               days=days,
+                               cpu_min=cpu_min, cpu_max=cpu_max, cpu_avg=cpu_avg,
+                               ram_min=ram_min, ram_max=ram_max, ram_avg=ram_avg,
+                               disk_min=disk_min, disk_max=disk_max, disk_avg=disk_avg,
+                               users_min=users_min, users_max=users_max, users_avg=users_avg,
+                               temp_min=temp_min, temp_max=temp_max, temp_avg=temp_avg,
+                               net_rx_min=net_rx_min / 1024 / 1024,
+                               net_rx_max=net_rx_max / 1024 / 1024,
+                               net_rx_avg=net_rx_avg / 1024 / 1024,
+                               net_tx_min=net_tx_min / 1024 / 1024,
+                               net_tx_max=net_tx_max / 1024 / 1024,
+                               net_tx_avg=net_tx_avg / 1024 / 1024
+                               )
+
+    except Exception as e:
+        return f"Ошибка при формировании отчёта: {str(e)}"
+
 
 # -------------- Экспорт CSV --------------
 
@@ -495,7 +510,7 @@ def export_data():
     # rows = [ (id, timestamp, cpu, ram, disk, net_rx, net_tx, users, temp), ... ]
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id","timestamp","cpu","ram","disk","net_rx","net_tx","users","temp"])
+    writer.writerow(["id", "timestamp", "cpu", "ram", "disk", "net_rx", "net_tx", "users", "temp"])
     for row in rows:
         writer.writerow(row)
     output.seek(0)
@@ -506,6 +521,7 @@ def export_data():
         download_name="metrics_export.csv"
     )
 
+
 # -------------- Динамический дашборд --------------
 
 @app.route("/dashboard_custom")
@@ -513,24 +529,31 @@ def dashboard_custom():
     if "logged_in" not in session:
         return redirect(url_for("login"))
 
-    show_cpu  = (request.args.get("cpu","1")  == "1")
-    show_ram  = (request.args.get("ram","1")  == "1")
-    show_disk = (request.args.get("disk","1") == "1")
+    metrics = ["cpu", "ram", "disk", "temp", "users", "rx", "tx"]
+    metric_labels = {
+        "cpu": "Процессор",
+        "ram": "Оперативная память",
+        "disk": "Диск",
+        "temp": "Температура",
+        "users": "Пользователи",
+        "rx": "Сеть ↓ (RX)",
+        "tx": "Сеть ↑ (TX)"
+    }
 
-    return render_template("dashboard_custom.html",
-                           show_cpu=show_cpu,
-                           show_ram=show_ram,
-                           show_disk=show_disk)
+    return render_template("dashboard_custom.html", metrics=metrics, metric_labels=metric_labels)
+
 
 # -------------- WebSocket test --------------
 @socketio.on("connect")
 def on_connect():
     print("Client connected via SocketIO")
-    emit("server_event", {"data":"Добро пожаловать! WebSocket connection established."})
+    emit("server_event", {"data": "Добро пожаловать! WebSocket connection established."})
+
 
 @socketio.on("disconnect")
 def on_disconnect():
     print("Client disconnected")
+
 
 # ------------ Вспомогательное -----------
 
@@ -538,3 +561,18 @@ def generate_2fa_code():
     import random
     digits = "0123456789"
     return "".join(random.choice(digits) for _ in range(TWOFA_CODE_LENGTH))
+
+
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template("404.html"), 404
+
+@app.route("/disconnect")
+def disconnect():
+    from server_monitoring.config import connection_status
+    connection_status["active"] = False  # остановит поток
+    connection_status["status"] = "Отключено"
+    connection_status["error"] = None
+    return redirect(url_for("dashboard_custom"))
+
+

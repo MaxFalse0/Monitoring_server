@@ -255,14 +255,105 @@ button:hover,
   100% { opacity: 1; transform: translateY(0); }
 }
 .gauge-details {
-  margin-top: 12px;
-  background: rgba(255, 255, 255, 0.02);
-  padding: 10px 14px;
-  border-radius: var(--radius);
-  font-size: 14px;
-  color: #aaa;
+    background: #2a2d33;
+    margin-top: 10px;
+    padding: 10px 15px;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    box-shadow: 0 0 5px #00000060;
+    color: #ddd;
 }
+
 
 .gauge-extra p {
   margin: 5px 0;
+}
+.metric-values {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9em;
+  color: var(--hint);
+  margin-top: 5px;
+}
+.metric-values span {
+  display: inline-block;
+  width: 32%;
+  text-align: center;
+}
+.notification {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: #2c2f33;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    z-index: 9999;
+    transition: all 0.3s ease;
+}
+.notification.success {
+    background-color: #2ecc71;
+}
+.notification.error {
+    background-color: #e74c3c;
+}
+.notification.hidden {
+    opacity: 0;
+}
+
+.chart-card {
+    flex: 1 1 30%;
+    padding: 1rem;
+    background-color: #1e1e1e;
+    border-radius: 10px;
+    margin: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+
+.charts-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.btn-disconnect {
+    margin: 1rem 0;
+    padding: 8px 16px;
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+.btn-disconnect:hover {
+    background-color: #c0392b;
+}
+.status-bar {
+    background: #1f1f26;
+    padding: 15px 20px;
+    border-radius: 12px;
+    box-shadow: 0 0 10px #00000040;
+    font-size: 1rem;
+}
+.btn.danger {
+    background: #7b1e1e;
+    color: white;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.3s ease;
+}
+.btn.danger:hover {
+    background: #a52828;
+}
+.gauge-box.clickable {
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.gauge-box.clickable:hover {
+    transform: scale(1.03);
+    box-shadow: 0 0 10px rgba(255,255,255,0.1);
 }

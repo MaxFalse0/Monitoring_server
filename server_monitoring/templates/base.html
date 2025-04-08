@@ -16,7 +16,7 @@
     <a href="{{ url_for('servers_list') }}" class="{% if request.endpoint == 'servers_list' %}active{% endif %}">Серверы</a>
     <a href="{{ url_for('tg_connect') }}" class="{% if request.endpoint == 'tg_connect' %}active{% endif %}">Telegram</a>
     <a href="{{ url_for('twofa_setup') }}" class="{% if request.endpoint == 'twofa_setup' %}active{% endif %}">2FA</a>
-    <a href="{{ url_for('logout') }}">Выход</a>
+    <a href="{{ url_for('logout') }}" id="logout-link">Выход</a>
 </div>
 
 <div class="main">
@@ -24,5 +24,6 @@
 </div>
 
 {% block scripts %}{% endblock %}
+<script src="{{ url_for('static', filename='security.js') }}"></script>
 </body>
 </html>
