@@ -17,7 +17,6 @@ from server_monitoring.socketio_manager import socketio
 from server_monitoring.security import register_security_headers
 from flask_login import login_required
 
-
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
@@ -93,8 +92,8 @@ def logout():
 @app.route("/", methods=["GET", "POST"])
 def dashboard():
     """
-    Если POST => ручной ввод IP/port/ssh => collect_metrics
-    Если GET => показать список серверов + метрики
+    Если POST – запуск асинхронного сбора метрик через celery,
+    если GET – показ текущего состояния и списка серверов.
     """
     global connection_status
     user_id = session["user_id"]
@@ -106,26 +105,21 @@ def dashboard():
         ssh_user = request.form["username"]
         ssh_password = request.form["password"]
 
-        connection_status["status"] = "Connecting to server..."
+        # Обновляем статус для отображения (будет показывать, что задача поставлена)
+        connection_status["status"] = "Задача по сбору метрик поставлена в очередь..."
         connection_status["error"] = None
 
         tg_username = session.get("telegram_username")
-        # Запускаем сбор метрик в отдельном потоке
-        # Передаём user_id, чтобы сохранить метрики "под" этим пользователем
-        threading.Thread(
-            target=collect_metrics,
-            args=(server_ip, server_port, ssh_user, ssh_password, connection_status, tg_username, user_id),
-            daemon=True
-        ).start()
+        # Запускаем асинхронную задачу через Celery
+        task_collect_metrics.delay(server_ip, server_port, ssh_user, ssh_password, user_id, tg_username)
 
         return render_template("index.html",
                                message=connection_status["status"],
                                status=connection_status,
                                servers=get_user_servers())
     else:
-        # GET => вывести список, показать актуальные метрики
         return render_template("index.html",
-                               message="Enter server data or select existing server",
+                               message="Введите данные сервера или выберите из списка",
                                status=connection_status,
                                servers=get_user_servers())
 
@@ -544,8 +538,10 @@ def report():
                                disk_avg=disk_avg, disk_min=disk_min, disk_max=disk_max,
                                users_avg=users_avg, users_min=users_min, users_max=users_max,
                                temp_avg=temp_avg, temp_min=temp_min, temp_max=temp_max,
-                               net_rx_avg=net_rx_avg, net_rx_min=net_rx_min / 1024 / 1024 if net_rx_min else 0, net_rx_max=net_rx_max / 1024 / 1024 if net_rx_max else 0,
-                               net_tx_avg=net_tx_avg, net_tx_min=net_tx_min / 1024 / 1024 if net_tx_min else 0, net_tx_max=net_tx_max / 1024 / 1024 if net_tx_max else 0,
+                               net_rx_avg=net_rx_avg, net_rx_min=net_rx_min / 1024 / 1024 if net_rx_min else 0,
+                               net_rx_max=net_rx_max / 1024 / 1024 if net_rx_max else 0,
+                               net_tx_avg=net_tx_avg, net_tx_min=net_tx_min / 1024 / 1024 if net_tx_min else 0,
+                               net_tx_max=net_tx_max / 1024 / 1024 if net_tx_max else 0,
                                swap_avg=swap_avg, swap_min=swap_min, swap_max=swap_max,
                                latest_uptime=latest_uptime,
                                procs_avg=procs_avg, procs_min=procs_min, procs_max=procs_max,
@@ -556,7 +552,6 @@ def report():
                                )
     except Exception as e:
         return f"Ошибка при формировании отчёта: {str(e)}"
-
 
 
 # -------------- Экспорт CSV --------------
@@ -632,6 +627,7 @@ def generate_2fa_code():
 def page_not_found(e):
     return render_template("404.html"), 404
 
+
 @app.route("/disconnect")
 def disconnect():
     from server_monitoring.config import connection_status
@@ -639,5 +635,3 @@ def disconnect():
     connection_status["status"] = "Отключено"
     connection_status["error"] = None
     return redirect(url_for("dashboard_custom"))
-
-

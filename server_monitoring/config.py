@@ -10,7 +10,6 @@ THRESHOLDS = {
     "disk": 90
 }
 
-# "autofix" порог, когда делаем auto-healing
 AUTOHEAL_CPU = 95
 
 # Telegram
@@ -19,25 +18,26 @@ TELEGRAM_BOT_TOKEN = "8180962728:AAFFZI2-SZT8Ig-0_VAy0wOYuEumJbY_VQs"
 # 2FA
 TWOFA_CODE_LENGTH = 6
 
-# Храним записи метрик только 30 дней
 DATA_RETENTION_DAYS = 30
 
 REMOTE_TEMP_SCRIPT = "/tmp/get_temp.sh"
 
-# Роли
 ROLES = ("admin", "user")
 
-# Настройки WebSocket
 SOCKETIO_CORS_ALLOWED_ORIGINS = "*"
 
-# Папка загрузок (если понадобится экспорт/импорт)
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
 
-# Расширяемый словарь статуса
 connection_status = {
     "status": "Not connected",
     "error": None,
     "server": None,
     "active": False
 }
+
+###################################
+# Новые настройки для Celery
+###################################
+CELERY_BROKER_URL = "redis://localhost:6379/0"
+CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
 

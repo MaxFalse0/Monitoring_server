@@ -12,3 +12,5 @@ pillow~=11.1.0
 filelock~=3.17.0
 redis~=4.3.4
 paramiko~=3.5.1
+celery
+redis
