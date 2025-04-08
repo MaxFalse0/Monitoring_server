@@ -4,7 +4,7 @@
 <h1 class="page-title">Мониторинг в реальном времени</h1>
 
 <!-- Статус подключения и кнопка "Отключиться" -->
-<div class="status-bar island" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+<div class="status-bar island" style="margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center;">
     <div>
         <strong>Статус подключения:</strong>
         <span id="conn-status" style="color: var(--success);">Загрузка...</span>
@@ -14,7 +14,7 @@
     </form>
 </div>
 
-<!-- Сетка для 9 метрик -->
+<!-- Сетка для gauge-диаграмм -->
 <div class="grid-gauges">
     {% set gauges_map = {
         'cpu': 'Процессор',
@@ -29,9 +29,7 @@
     } %}
     {% for metric, label in gauges_map.items() %}
     <div class="gauge-box">
-        <div class="gauge-container clickable"
-             onclick="toggleDetails('{{ metric }}')"
-             title="Нажмите, чтобы увидеть Среднее/Мин/Макс">
+        <div class="gauge-container clickable" onclick="toggleDetails('{{ metric }}')" title="Нажмите для подробностей (среднее/мин/макс)">
             <canvas id="{{ metric }}Gauge"></canvas>
             <div class="chart-value" id="{{ metric }}Value">--</div>
         </div>
@@ -70,9 +68,8 @@
 
 <p style="margin-top:20px;">Последнее обновление: <span id="last-update">--:--</span></p>
 
-<!-- Стили -->
+<!-- Стили для обновленного интерфейса -->
 <style>
-    /* Сетка графиков: 3-4 графика в ряд */
     .grid-gauges {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -128,9 +125,8 @@
     }
     .gauge-container.clickable:hover {
         transform: scale(1.03);
-        box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+        box-shadow: 0 0 8px rgba(255,255,255,0.2);
     }
-    /* Секция системной информации */
     .sys-info {
         margin-top: 30px;
     }
@@ -155,12 +151,12 @@
     }
 </style>
 
-<!-- Подключаем Chart.js и Socket.IO -->
+<!-- Подключение Chart.js и Socket.IO -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
 
 <script>
-/* Сопоставляем метрику с ID canvas */
+/* Связь метрики с ID canvas */
 const gauges = {
     cpu: 'cpuGauge',
     ram: 'ramGauge',
@@ -173,7 +169,7 @@ const gauges = {
     power: 'powerGauge'
 };
 
-/* История для вычисления средних, минимум и максимум */
+/* История для вычисления статистики */
 const historyData = {
     cpu: [],
     ram: [],
@@ -186,10 +182,10 @@ const historyData = {
     power: []
 };
 
-/* Объекты Chart.js для каждого gauge */
+/* Объекты Chart.js */
 const charts = {};
 
-/* Функция создания gauge-диаграммы */
+/* Функция для создания gauge-диаграммы */
 function createGauge(ctx) {
     return new Chart(ctx, {
         type: 'doughnut',
@@ -213,7 +209,7 @@ function createGauge(ctx) {
     });
 }
 
-/* Инициализируем все gauge */
+/* Инициализация всех gauge */
 for (const key in gauges) {
     const ctx = document.getElementById(gauges[key]).getContext('2d');
     charts[key] = createGauge(ctx);
@@ -228,7 +224,7 @@ function formatNetSpeed(val) {
     return b.toFixed(0) + " B/s";
 }
 
-/* Динамическая шкала для сетевых метрик (rx и tx) */
+/* Динамическая шкала для сетевых метрик (rx, tx) */
 function scaleNetDynamic(value, arr) {
     const b = parseFloat(value);
     arr.push(isNaN(b) ? 0 : b);
@@ -238,7 +234,7 @@ function scaleNetDynamic(value, arr) {
     return [percent, 100 - percent];
 }
 
-/* Обновляем историю для метрики */
+/* Функция обновления истории для метрики */
 function updateHistory(metric, value) {
     const arr = historyData[metric];
     arr.push(value);
@@ -254,7 +250,7 @@ function updateHistory(metric, value) {
     };
 }
 
-/* Заполняем блок с дополнительными данными */
+/* Заполнение блока с дополнительными данными */
 function fillDetails(metric, stats, unit='%') {
     const block = document.getElementById("details-" + metric);
     if (!block) return;
@@ -268,31 +264,27 @@ function fillDetails(metric, stats, unit='%') {
     `;
 }
 
-/* Основное обновление gauge и текстовых значений */
+/* Основная функция обновления gauge и текстовых элементов */
 function updateGauges(data) {
     if (!data) return;
 
-    // Обновляем gauge: CPU, RAM, Disk, Temp, Users, Swap
+    // Обновляем gauge для основных метрик (0–100)
     charts.cpu.data.datasets[0].data = [data.cpu, 100 - data.cpu];
     charts.ram.data.datasets[0].data = [data.ram, 100 - data.ram];
     charts.disk.data.datasets[0].data = [data.disk, 100 - data.disk];
 
     let t = data.temp ?? 0;
-    if (t < 0) t = 0;
-    if (t > 100) t = 100;
+    if (t < 0) t = 0; if (t > 100) t = 100;
     charts.temp.data.datasets[0].data = [t, 100 - t];
 
     let u = data.users ?? 0;
-    if (u < 0) u = 0;
-    if (u > 100) u = 100;
+    if (u < 0) u = 0; if (u > 100) u = 100;
     charts.users.data.datasets[0].data = [u, 100 - u];
 
     let s = data.swap ?? 0;
-    if (s < 0) s = 0;
-    if (s > 100) s = 100;
+    if (s < 0) s = 0; if (s > 100) s = 100;
     charts.swap.data.datasets[0].data = [s, 100 - s];
 
-    // Обновляем сеть (rx, tx) с динамической шкалой
     const rxVal = data.rx ?? 0;
     const txVal = data.tx ?? 0;
     const rxScaled = scaleNetDynamic(rxVal, historyData.rx);
@@ -300,18 +292,16 @@ function updateGauges(data) {
     charts.rx.data.datasets[0].data = rxScaled;
     charts.tx.data.datasets[0].data = txScaled;
 
-    // Энергопотребление: нормируем диапазон (например, 0..1000 W -> делим на 10)
     let p = data.power ?? 0;
-    if (p < 0) p = 0;
-    if (p > 1000) p = 1000;
+    if (p < 0) p = 0; if (p > 1000) p = 1000;
     charts.power.data.datasets[0].data = [p / 10, 100 - (p / 10)];
 
-    // Перерисовываем графики
+    // Обновляем графики
     for (let key in charts) {
         charts[key].update();
     }
 
-    // Фиксируем текущие значения
+    // Обновляем текущие значения
     document.getElementById("cpuValue").textContent = data.cpu + "%";
     document.getElementById("ramValue").textContent = data.ram + "%";
     document.getElementById("diskValue").textContent = data.disk + "%";
@@ -322,7 +312,7 @@ function updateGauges(data) {
     document.getElementById("txValue").textContent = formatNetSpeed(txVal);
     document.getElementById("powerValue").textContent = data.power + " W";
 
-    // Обновляем историю и детали для каждой метрики
+    // Обновляем историю для дополнительных данных
     const cpuStats = updateHistory('cpu', data.cpu);
     const ramStats = updateHistory('ram', data.ram);
     const diskStats = updateHistory('disk', data.disk);
@@ -343,7 +333,6 @@ function updateGauges(data) {
     fillDetails('tx', txStats, ' B/s');
     fillDetails('power', powerStats, ' W');
 
-    // Обновляем время последнего обновления
     document.getElementById("last-update").textContent = new Date().toLocaleTimeString();
 
     // Обновляем системную информацию
@@ -369,7 +358,7 @@ function updateConnectionStatus(statusData) {
     }
 }
 
-/* Периодический опрос /data */
+/* Опрос /data каждые 3 секунды */
 function fetchStatus() {
     fetch("/data")
         .then(res => res.json())

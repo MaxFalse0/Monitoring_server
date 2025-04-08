@@ -451,7 +451,6 @@ def servers_delete(server_id):
 def report():
     if "logged_in" not in session:
         return redirect(url_for("login"))
-
     user_id = session["user_id"]
     role = session["role"]
 
@@ -466,6 +465,7 @@ def report():
         if not rows:
             return render_template("report.html", days=days)
 
+        # Старые метрики
         cpus = [r[0] for r in rows if r[0] is not None]
         rams = [r[1] for r in rows if r[1] is not None]
         disks = [r[2] for r in rows if r[2] is not None]
@@ -474,51 +474,89 @@ def report():
         net_rxs = [r[5] for r in rows if r[5] is not None]
         net_txs = [r[6] for r in rows if r[6] is not None]
 
+        # Новые метрики
+        swaps = [r[7] for r in rows if r[7] is not None]
+        # uptime — строка, поэтому возьмем последнее значение:
+        latest_uptime = rows[-1][8]
+        procs = [r[9] for r in rows if r[9] is not None]
+        threads = [r[10] for r in rows if r[10] is not None]
+        rx_errs = [r[11] for r in rows if r[11] is not None]
+        tx_errs = [r[12] for r in rows if r[12] is not None]
+        powers = [r[13] for r in rows if r[13] is not None]
+
+        # Вычисления статистики по метрикам
+        cpu_avg = sum(cpus) / len(cpus) if cpus else None
         cpu_min = min(cpus) if cpus else None
         cpu_max = max(cpus) if cpus else None
-        cpu_avg = sum(cpus) / len(cpus) if cpus else None
 
+        ram_avg = sum(rams) / len(rams) if rams else None
         ram_min = min(rams) if rams else None
         ram_max = max(rams) if rams else None
-        ram_avg = sum(rams) / len(rams) if rams else None
 
+        disk_avg = sum(disks) / len(disks) if disks else None
         disk_min = min(disks) if disks else None
         disk_max = max(disks) if disks else None
-        disk_avg = sum(disks) / len(disks) if disks else None
 
+        users_avg = sum(users_) / len(users_) if users_ else None
         users_min = min(users_) if users_ else None
         users_max = max(users_) if users_ else None
-        users_avg = sum(users_) / len(users_) if users_ else None
 
+        temp_avg = sum(temps) / len(temps) if temps else None
         temp_min = min(temps) if temps else None
         temp_max = max(temps) if temps else None
-        temp_avg = sum(temps) / len(temps) if temps else None
 
-        net_rx_min = min(net_rxs) if net_rxs else 0
-        net_rx_max = max(net_rxs) if net_rxs else 0
-        net_rx_avg = sum(net_rxs) / len(net_rxs) if net_rxs else 0
+        net_rx_avg = sum(net_rxs) / len(net_rxs) if net_rxs else None
+        net_rx_min = min(net_rxs) if net_rxs else None
+        net_rx_max = max(net_rxs) if net_rxs else None
 
-        net_tx_min = min(net_txs) if net_txs else 0
-        net_tx_max = max(net_txs) if net_txs else 0
-        net_tx_avg = sum(net_txs) / len(net_txs) if net_txs else 0
+        net_tx_avg = sum(net_txs) / len(net_txs) if net_txs else None
+        net_tx_min = min(net_txs) if net_txs else None
+        net_tx_max = max(net_txs) if net_txs else None
+
+        swap_avg = sum(swaps) / len(swaps) if swaps else None
+        swap_min = min(swaps) if swaps else None
+        swap_max = max(swaps) if swaps else None
+
+        procs_avg = sum(procs) / len(procs) if procs else None
+        procs_min = min(procs) if procs else None
+        procs_max = max(procs) if procs else None
+
+        threads_avg = sum(threads) / len(threads) if threads else None
+        threads_min = min(threads) if threads else None
+        threads_max = max(threads) if threads else None
+
+        rx_err_avg = sum(rx_errs) / len(rx_errs) if rx_errs else None
+        rx_err_min = min(rx_errs) if rx_errs else None
+        rx_err_max = max(rx_errs) if rx_errs else None
+
+        tx_err_avg = sum(tx_errs) / len(tx_errs) if tx_errs else None
+        tx_err_min = min(tx_errs) if tx_errs else None
+        tx_err_max = max(tx_errs) if tx_errs else None
+
+        power_avg = sum(powers) / len(powers) if powers else None
+        power_min = min(powers) if powers else None
+        power_max = max(powers) if powers else None
 
         return render_template("report.html",
                                days=days,
-                               cpu_min=cpu_min, cpu_max=cpu_max, cpu_avg=cpu_avg,
-                               ram_min=ram_min, ram_max=ram_max, ram_avg=ram_avg,
-                               disk_min=disk_min, disk_max=disk_max, disk_avg=disk_avg,
-                               users_min=users_min, users_max=users_max, users_avg=users_avg,
-                               temp_min=temp_min, temp_max=temp_max, temp_avg=temp_avg,
-                               net_rx_min=net_rx_min / 1024 / 1024,
-                               net_rx_max=net_rx_max / 1024 / 1024,
-                               net_rx_avg=net_rx_avg / 1024 / 1024,
-                               net_tx_min=net_tx_min / 1024 / 1024,
-                               net_tx_max=net_tx_max / 1024 / 1024,
-                               net_tx_avg=net_tx_avg / 1024 / 1024
+                               cpu_avg=cpu_avg, cpu_min=cpu_min, cpu_max=cpu_max,
+                               ram_avg=ram_avg, ram_min=ram_min, ram_max=ram_max,
+                               disk_avg=disk_avg, disk_min=disk_min, disk_max=disk_max,
+                               users_avg=users_avg, users_min=users_min, users_max=users_max,
+                               temp_avg=temp_avg, temp_min=temp_min, temp_max=temp_max,
+                               net_rx_avg=net_rx_avg, net_rx_min=net_rx_min / 1024 / 1024 if net_rx_min else 0, net_rx_max=net_rx_max / 1024 / 1024 if net_rx_max else 0,
+                               net_tx_avg=net_tx_avg, net_tx_min=net_tx_min / 1024 / 1024 if net_tx_min else 0, net_tx_max=net_tx_max / 1024 / 1024 if net_tx_max else 0,
+                               swap_avg=swap_avg, swap_min=swap_min, swap_max=swap_max,
+                               latest_uptime=latest_uptime,
+                               procs_avg=procs_avg, procs_min=procs_min, procs_max=procs_max,
+                               threads_avg=threads_avg, threads_min=threads_min, threads_max=threads_max,
+                               rx_err_avg=rx_err_avg, rx_err_min=rx_err_min, rx_err_max=rx_err_max,
+                               tx_err_avg=tx_err_avg, tx_err_min=tx_err_min, tx_err_max=tx_err_max,
+                               power_avg=power_avg, power_min=power_min, power_max=power_max
                                )
-
     except Exception as e:
         return f"Ошибка при формировании отчёта: {str(e)}"
+
 
 
 # -------------- Экспорт CSV --------------

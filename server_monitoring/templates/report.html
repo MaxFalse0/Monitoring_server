@@ -6,16 +6,13 @@
 {% if cpu_min is not none %}
 <div class="island" style="max-width: 600px;">
     <p><strong>CPU:</strong> {{ cpu_avg|round(2) if cpu_avg is not none else '—' }}%
-    (мин: {{ cpu_min|round(2) if cpu_min is not none else '—' }}%,
-     макс: {{ cpu_max|round(2) if cpu_max is not none else '—' }}%)</p>
+    (мин: {{ cpu_min|round(2) if cpu_min is not none else '—' }}%, макс: {{ cpu_max|round(2) if cpu_max is not none else '—' }}%)</p>
 
     <p><strong>RAM:</strong> {{ ram_avg|round(2) if ram_avg is not none else '—' }}%
-    (мин: {{ ram_min|round(2) if ram_min is not none else '—' }}%,
-     макс: {{ ram_max|round(2) if ram_max is not none else '—' }}%)</p>
+    (мин: {{ ram_min|round(2) if ram_min is not none else '—' }}%, макс: {{ ram_max|round(2) if ram_max is not none else '—' }}%)</p>
 
     <p><strong>Disk:</strong> {{ disk_avg|round(2) if disk_avg is not none else '—' }}%
-    (мин: {{ disk_min|round(2) if disk_min is not none else '—' }}%,
-     макс: {{ disk_max|round(2) if disk_max is not none else '—' }}%)</p>
+    (мин: {{ disk_min|round(2) if disk_min is not none else '—' }}%, макс: {{ disk_max|round(2) if disk_max is not none else '—' }}%)</p>
 
     <p><strong>Температура:</strong>
     {% if temp_avg is not none %}
@@ -27,8 +24,7 @@
 
     <p><strong>Пользователи:</strong>
     {{ users_avg|round(0) if users_avg is not none else '—' }}
-    (мин: {{ users_min if users_min is not none else '—' }},
-     макс: {{ users_max if users_max is not none else '—' }})</p>
+    (мин: {{ users_min if users_min is not none else '—' }}, макс: {{ users_max if users_max is not none else '—' }})</p>
 
     <p><strong>Net RX:</strong>
     {{ net_rx_avg|round(2) if net_rx_avg is not none else '—' }} MB
@@ -39,17 +35,36 @@
     {{ net_tx_avg|round(2) if net_tx_avg is not none else '—' }} MB
     (мин: {{ net_tx_min|round(2) if net_tx_min is not none else '—' }} MB,
      макс: {{ net_tx_max|round(2) if net_tx_max is not none else '—' }} MB)</p>
+
+    <hr>
+
+    <p><strong>Swap:</strong> {{ swap_avg|round(2) if swap_avg is not none else '—' }}%
+    (мин: {{ swap_min|round(2) if swap_min is not none else '—' }}%, макс: {{ swap_max|round(2) if swap_max is not none else '—' }}%)</p>
+
+    <p><strong>Последний Uptime:</strong> {{ latest_uptime }}</p>
+
+    <p><strong>Процессы:</strong> {{ procs_avg|round(0) if procs_avg is not none else '—' }}
+    (мин: {{ procs_min if procs_min is not none else '—' }}, макс: {{ procs_max if procs_max is not none else '—' }})</p>
+
+    <p><strong>Потоки:</strong> {{ threads_avg|round(0) if threads_avg is not none else '—' }}
+    (мин: {{ threads_min if threads_min is not none else '—' }}, макс: {{ threads_max if threads_max is not none else '—' }})</p>
+
+    <p><strong>Ошибки RX:</strong> {{ rx_err_avg|round(2) if rx_err_avg is not none else '—' }}
+    (мин: {{ rx_err_min|round(2) if rx_err_min is not none else '—' }}, макс: {{ rx_err_max|round(2) if rx_err_max is not none else '—' }})</p>
+
+    <p><strong>Ошибки TX:</strong> {{ tx_err_avg|round(2) if tx_err_avg is not none else '—' }}
+    (мин: {{ tx_err_min|round(2) if tx_err_min is not none else '—' }}, макс: {{ tx_err_max|round(2) if tx_err_max is not none else '—' }})</p>
+
+    <p><strong>Энергопотребление:</strong> {{ power_avg|round(2) if power_avg is not none else '—' }} W
+    (мин: {{ power_min|round(2) if power_min is not none else '—' }} W, макс: {{ power_max|round(2) if power_max is not none else '—' }} W)</p>
 </div>
 {% else %}
 <div class="island" style="max-width: 600px; margin: auto; padding: 40px; text-align: center; background-color: #1f1f1f; border: 1px solid #333; border-radius: 16px; box-shadow: 0 0 10px #00000050;">
     <div style="font-size: 3em; margin-bottom: 10px;">📉</div>
     <h2 style="color: #fff; font-size: 1.6em;">Нет данных для отображения</h2>
-    <p style="color: var(--hint); font-size: 1em; margin: 10px 0 25px;">
-        Отчёт не содержит данных за выбранный период. Проверьте подключение сервера или измените интервал.
-    </p>
+    <p style="color: var(--hint); font-size: 1em; margin: 10px 0 25px;">Отчёт не содержит данных за выбранный период. Проверьте подключение сервера или измените интервал.</p>
     <form method="get" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
-        <input type="number" name="days" value="{{ days }}" min="1" required
-               style="width: 120px; padding: 10px; border-radius: 8px; background: #2c2c2c; border: 1px solid #444; color: #fff;">
+        <input type="number" name="days" value="{{ days }}" min="1" required style="width: 120px; padding: 10px; border-radius: 8px; background: #2c2c2c; border: 1px solid #444; color: #fff;">
         <button type="submit" class="btn">🔄 Обновить</button>
     </form>
 </div>

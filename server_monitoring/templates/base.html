@@ -1,14 +1,97 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8" />
-    <title>{% block title %}Мониторинг{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    {% block head %}{% endblock %}
+  <meta charset="UTF-8">
+  <title>{% block title %}Мониторинг{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    /* CSS-переменные для темной темы */
+    :root {
+      --primary: #4a90e2;
+      --secondary: #d0021b;
+      --background: #1f1f1f;
+      --card-bg: #2b2b2b;
+      --text: #dcdcdc;
+      --hint: #777;
+      --success: #4caf50;
+      --danger: #f44336;
+      --border: #333;
+      --shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Общее оформление */
+    body {
+      background-color: var(--background);
+      color: var(--text);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+    }
+    a {
+      text-decoration: none;
+      color: var(--primary);
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin: 0 0 15px 0;
+      color: var(--text);
+    }
+
+    /* Sidebar */
+    .sidebar {
+      background: var(--card-bg);
+      padding: 20px;
+      width: 240px;
+      height: 100vh;
+      position: fixed;
+      top: 0;
+      left: 0;
+      overflow-y: auto;
+      box-shadow: var(--shadow);
+    }
+    .sidebar h2 {
+      text-align: center;
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+      color: var(--text);
+    }
+    .sidebar a {
+      display: block;
+      padding: 12px 15px;
+      border-radius: 8px;
+      margin: 8px 0;
+      color: var(--text);
+      transition: background 0.3s, color 0.3s;
+    }
+    .sidebar a:hover,
+    .sidebar a.active {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    /* Основной контент */
+    .main {
+      margin-left: 260px;
+      padding: 20px;
+    }
+
+    /* Отзывчивая верстка для мобильных устройств */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        box-shadow: none;
+      }
+      .main {
+        margin-left: 0;
+      }
+    }
+  </style>
+  {% block head %}{% endblock %}
 </head>
 <body>
-
-<div class="sidebar">
+  <div class="sidebar">
     <h2>Мониторинг</h2>
     <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">Главная</a>
     <a href="{{ url_for('report') }}" class="{% if request.endpoint == 'report' %}active{% endif %}">Отчёт</a>
@@ -16,14 +99,11 @@
     <a href="{{ url_for('servers_list') }}" class="{% if request.endpoint == 'servers_list' %}active{% endif %}">Серверы</a>
     <a href="{{ url_for('tg_connect') }}" class="{% if request.endpoint == 'tg_connect' %}active{% endif %}">Telegram</a>
     <a href="{{ url_for('twofa_setup') }}" class="{% if request.endpoint == 'twofa_setup' %}active{% endif %}">2FA</a>
-    <a href="{{ url_for('logout') }}" id="logout-link">Выход</a>
-</div>
-
-<div class="main">
+    <a href="{{ url_for('logout') }}">Выход</a>
+  </div>
+  <div class="main">
     {% block content %}{% endblock %}
-</div>
-
-{% block scripts %}{% endblock %}
-<script src="{{ url_for('static', filename='security.js') }}"></script>
+  </div>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

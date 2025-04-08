@@ -39,9 +39,19 @@
         </form>
 
         <div class="hint">
-            Код отправлен в Telegram. <span id="timer">Ожидайте...</span>
+            Код отправлен в Telegram.
+            <span id="timer">
+                {% if remaining > 0 %}
+                    Ожидайте {{ remaining }} сек.
+                {% else %}
+                    Вы можете запросить новый код.
+                {% endif %}
+            </span>
         </div>
-       <button id="resend-btn" type="button" class="resend-btn disabled" disabled>🔁 Отправить код повторно</button>
+
+        <button id="resend-btn" type="button" class="resend-btn {% if remaining > 0 %}disabled{% endif %}" {% if remaining > 0 %}disabled{% endif %}>
+            🔁 Отправить код повторно
+        </button>
 
         <a href="{{ url_for('login') }}" style="display:block;margin-top:15px;">← Назад к входу</a>
     </div>
@@ -50,58 +60,62 @@
 <script>
     document.getElementById("code").focus();
 
+    // Инициализируем счетчик из переменной remaining, переданной из маршрута.
     let seconds = {{ remaining or 0 }};
     const timerSpan = document.getElementById("timer");
     const resendBtn = document.getElementById("resend-btn");
 
-    function startTimer() {
+    function updateTimerText() {
         if (seconds > 0) {
-            resendBtn.disabled = true;
-            resendBtn.classList.add("disabled");
-            updateTimerText();
-
-            const countdown = setInterval(() => {
-                seconds--;
-                updateTimerText();
-
-                if (seconds <= 0) {
-                    clearInterval(countdown);
-                    resendBtn.disabled = false;
-                    resendBtn.classList.remove("disabled");
-                    timerSpan.textContent = "Вы можете запросить новый код.";
-                }
-            }, 1000);
+            timerSpan.textContent = `Ожидайте ${seconds} сек.`;
         } else {
             timerSpan.textContent = "Вы можете запросить новый код.";
-            resendBtn.disabled = false;
-            resendBtn.classList.remove("disabled");
         }
     }
 
-    function updateTimerText() {
-        timerSpan.textContent = `Ожидайте ${seconds} сек.`;
+    function startTimer() {
+        updateTimerText();
+        const countdown = setInterval(() => {
+            if (seconds > 0) {
+                seconds--;
+                updateTimerText();
+            }
+            if (seconds <= 0) {
+                clearInterval(countdown);
+                resendBtn.disabled = false;
+                resendBtn.classList.remove("disabled");
+                updateTimerText();
+            }
+        }, 1000);
     }
 
     resendBtn.addEventListener("click", () => {
-    resendBtn.disabled = true;
-    resendBtn.classList.add("disabled");
+        resendBtn.disabled = true;
+        resendBtn.classList.add("disabled");
+        fetch("/resend_code")
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === "ok") {
+                    // После успешной отправки новый код устанавливаем таймер на 60 сек.
+                    seconds = 60;
+                    startTimer();
+                } else {
+                    alert("Ошибка при повторной отправке кода: " + (data.message || "Неизвестная"));
+                }
+            })
+            .catch(error => {
+                alert("Сетевая ошибка: " + error);
+            });
+    });
 
-    fetch("/resend_code")
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === "ok") {
-                seconds = 60;
-                startTimer();
-            } else {
-                alert("Ошибка при повторной отправке кода: " + (data.message || "Неизвестно"));
-            }
-        })
-        .catch(error => {
-            alert("Сетевая ошибка: " + error);
-        });
-});
-
-
+    // Если первоначально seconds равно 0, сразу запускаем таймер (или кнопка остаётся активной)
+    if (seconds > 0) {
+        resendBtn.disabled = true;
+        resendBtn.classList.add("disabled");
+    } else {
+        resendBtn.disabled = false;
+        resendBtn.classList.remove("disabled");
+    }
     startTimer();
 </script>
 </body>
