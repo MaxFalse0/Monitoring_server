@@ -139,43 +139,42 @@ def collect_metrics(server_ip, port, ssh_user, ssh_password, status_dict, tg_use
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(server_ip, port=port, username=ssh_user, password=ssh_password, timeout=10)
 
-        # Устанавливаем статус подключения
         status_dict["active"] = True
         status_dict["server"] = f"{server_ip}:{port}"
 
         while status_dict.get("active", False):
-            # Собираем основные метрики
-            stdin, stdout, _ = client.exec_command("top -bn1 | grep '%Cpu' | awk '{print 100 - $8}'")
-            cpu = float(stdout.read().decode().strip())
+            # Объединяем несколько команд для ускорения получения базовых метрик
+            combined_command = (
+                "top -bn1 | grep '%Cpu' | awk '{print 100 - $8}';"
+                "free | grep Mem | awk '{print $3/$2 * 100.0}';"
+                "df / | tail -1 | awk '{print $5}' | tr -d '%';"
+                "who | wc -l"
+            )
+            stdin, stdout, _ = client.exec_command(combined_command)
+            output = stdout.read().decode().splitlines()
+            if len(output) >= 4:
+                cpu = float(output[0])
+                ram = float(output[1])
+                disk = float(output[2])
+                users = int(output[3])
+            else:
+                raise Exception("Ошибка получения базовых метрик")
 
-            stdin, stdout, _ = client.exec_command("free | grep Mem | awk '{print $3/$2 * 100.0}'")
-            ram = float(stdout.read().decode().strip())
-
-            stdin, stdout, _ = client.exec_command("df / | tail -1 | awk '{print $5}'")
-            disk = float(stdout.read().decode().strip().replace('%', ''))
-
-            stdin, stdout, _ = client.exec_command("who | wc -l")
-            users = int(stdout.read().decode().strip())
-
-            temp = get_temp(client)
-
+            # Получаем сетевые данные за 0.5 секунды
             rx1, tx1 = get_net_bytes(client)
-            time.sleep(2)
+            time.sleep(0.5)
             rx2, tx2 = get_net_bytes(client)
-            delta_rx = rx2 - rx1
-            delta_tx = tx2 - tx1
+            net_rx = round((rx2 - rx1) / 0.5, 2)
+            net_tx = round((tx2 - tx1) / 0.5, 2)
 
-            net_rx = round(delta_rx / 2, 2)  # B/s
-            net_tx = round(delta_tx / 2, 2)  # B/s
-
-            # Новые метрики
+            # Остальные метрики
+            temp = get_temp(client)
             swap = get_swap_usage(client)
             uptime_str = get_uptime(client)
             procs, threads = get_proc_thread_counts(client)
             rx_err, tx_err = get_interface_errors(client)
             power = get_power_consumption(client)
 
-            # Собираем все метрики в один словарь
             metrics = {
                 "cpu": round(cpu, 1),
                 "ram": round(ram),
@@ -198,7 +197,6 @@ def collect_metrics(server_ip, port, ssh_user, ssh_password, status_dict, tg_use
                   f"Uptime={uptime_str}, Procs={procs}, Threads={threads}, RX_err={rx_err}, TX_err={tx_err}, "
                   f"Power={metrics['power']}W")
 
-            # Сохраняем метрики в базу (save_metrics должна быть обновлена для новых полей)
             save_metrics(
                 user_id=user_id,
                 cpu=metrics["cpu"],
@@ -217,10 +215,10 @@ def collect_metrics(server_ip, port, ssh_user, ssh_password, status_dict, tg_use
                 power=metrics["power"]
             )
 
-            # Обновляем статус подключения
             status_dict["status"] = "Сервер подключён и данные собираются"
             status_dict["error"] = None
 
+            time.sleep(3)  # сбор метрик каждые 3 секунды
     except Exception as e:
         print(f"[COLLECT ERROR] {e}")
         status_dict["status"] = "Ошибка подключения"

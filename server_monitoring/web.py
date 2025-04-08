@@ -6,6 +6,10 @@ import threading
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 from flask_socketio import SocketIO, emit
 import time
+from server_monitoring.celery_worker import task_collect_metrics
+import sqlite3
+from server_monitoring.database import DB_NAME
+from werkzeug.security import generate_password_hash, check_password_hash
 from server_monitoring.collect import collect_metrics
 from server_monitoring.auth import login_user as auth_login_user, register_user
 from server_monitoring import database
@@ -20,6 +24,10 @@ from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from server_monitoring.database import get_user_by_id
 from server_monitoring.user import User
+import re
+import os
+import logging
+from logging.handlers import RotatingFileHandler
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -29,6 +37,16 @@ socketio.init_app(app, cors_allowed_origins="*")  # или SOCKETIO_CORS_ALLOWED
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+
+if not os.path.exists("app.log"):
+    with open("app.log", "w", encoding="utf-8") as f:
+        f.write("")
+
+file_handler = RotatingFileHandler("app.log", maxBytes=100000, backupCount=10)
+file_handler.setLevel(logging.INFO)
+formatter = logging.Formatter("[%(asctime)s] %(levelname)s in %(module)s: %(message)s")
+file_handler.setFormatter(formatter)
+app.logger.addHandler(file_handler)
 
 
 @login_manager.user_loader
@@ -41,6 +59,7 @@ def load_user(user_id):
 
 from flask_login import current_user
 
+
 @app.before_request
 def check_session():
     allowed_routes = (
@@ -51,11 +70,9 @@ def check_session():
         return redirect(url_for("login"))
 
 
-
 # -------------- Авторизация --------------
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
+@app.route("/register", methods=["GET", "POST"], endpoint="register")
+def register_view():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
@@ -65,6 +82,49 @@ def register():
         except Exception as e:
             return render_template("register.html", error=str(e))
     return render_template("register.html", error=None)
+
+
+def register_user(username, password):
+    # Валидация логина
+    if len(username) < 4:
+        raise Exception("Имя пользователя должно быть не короче 4 символов.")
+    if not re.match("^[a-zA-Z0-9_]+$", username):
+        raise Exception("Имя пользователя может содержать только буквы, цифры и _")
+
+    # Валидация пароля
+    if len(password) < 8:
+        raise Exception("Пароль должен содержать минимум 8 символов.")
+    if not re.search(r"[A-Z]", password):
+        raise Exception("Пароль должен содержать хотя бы одну заглавную букву.")
+    if not re.search(r"[a-z]", password):
+        raise Exception("Пароль должен содержать хотя бы одну строчную букву.")
+    if not re.search(r"\d", password):
+        raise Exception("Пароль должен содержать хотя бы одну цифру.")
+    if not re.search(r"[!@#$%^&*()_+{}\[\]:;\"'<>?,./\\\-]", password):
+        raise Exception("Пароль должен содержать хотя бы один спецсимвол.")
+
+    # Хеширование пароля
+    hashed = generate_password_hash(password)
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    # Проверка существования пользователя с таким именем
+    cursor.execute("SELECT id FROM users WHERE username=?", (username,))
+    if cursor.fetchone():
+        raise Exception("Пользователь с таким именем уже существует.")
+
+    # Определение роли: если еще нет пользователей, назначить admin, иначе user
+    cursor.execute("SELECT COUNT(*) FROM users")
+    count = cursor.fetchone()[0]
+    role = "admin" if count == 0 else "user"
+
+    # Сохранение нового пользователя с назначенной ролью
+    cursor.execute('''
+        INSERT INTO users (username, password, role)
+        VALUES (?, ?, ?)
+    ''', (username, hashed, role))
+    conn.commit()
+    conn.close()
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -101,8 +161,6 @@ def login():
     return render_template("login.html", error=None)
 
 
-
-
 @app.route("/logout")
 @login_required
 def logout():
@@ -110,19 +168,13 @@ def logout():
     return redirect(url_for("login"))
 
 
-
 # -------------- Главная страница ("/") --------------
 
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def dashboard():
-    """
-    Если POST – запуск асинхронного сбора метрик через Celery,
-    если GET – показ текущего состояния и списка серверов.
-    """
     global connection_status
     user_id = current_user.id
-    user_role = current_user.role
 
     if request.method == "POST":
         server_ip = request.form["server_ip"]
@@ -130,12 +182,17 @@ def dashboard():
         ssh_user = request.form["username"]
         ssh_password = request.form["password"]
 
-        connection_status["status"] = "Задача по сбору метрик поставлена в очередь..."
+        connection_status["status"] = "Подключаемся к серверу..."
         connection_status["error"] = None
 
         tg_username = current_user.telegram_username
-        # Запускаем асинхронную задачу через Celery
-        task_collect_metrics.delay(server_ip, server_port, ssh_user, ssh_password, user_id, tg_username)
+
+        # Запускаем сбор метрик в фоновом потоке (бесконечно, пока не нажмут "отключить")
+        threading.Thread(
+            target=collect_metrics,
+            args=(server_ip, server_port, ssh_user, ssh_password, connection_status, tg_username, user_id),
+            daemon=True
+        ).start()
 
         return render_template("index.html",
                                message=connection_status["status"],
@@ -146,7 +203,6 @@ def dashboard():
                                message="Введите данные сервера или выберите из списка",
                                status=connection_status,
                                servers=get_user_servers())
-
 
 
 @app.route("/connect_existing_server", methods=["POST"])
@@ -185,7 +241,6 @@ def connect_existing_server():
     return redirect(url_for("dashboard"))
 
 
-
 def get_user_servers():
     """
     Возвращает список серверов для текущего пользователя (или все, если admin).
@@ -197,7 +252,6 @@ def get_user_servers():
     role = current_user.role
     servers = database.get_servers_for_user(user_id, role)
     return servers
-
 
 
 @app.route("/data")
@@ -230,7 +284,6 @@ def get_data():
     return jsonify({"metrics": metrics, "status": connection_status})
 
 
-
 # -------------- Telegram, 2FA --------------
 
 @app.route("/tg_connect", methods=["GET", "POST"])
@@ -256,7 +309,6 @@ def tg_connect():
                            current_tg=user["telegram_username"],
                            bot_name="@AllertServMonitorBot",
                            error=None)
-
 
 
 @app.route("/twofa_verify", methods=["GET", "POST"])
@@ -285,7 +337,8 @@ def twofa_verify():
             session.pop("twofa_code", None)
             session.pop("twofa_timestamp", None)
             # Создаем объект пользователя для Flask-Login и отмечаем его как аутентифицированного
-            user_obj = User(user["id"], user["username"], user["telegram_username"], user["twofa_enabled"], user["role"])
+            user_obj = User(user["id"], user["username"], user["telegram_username"], user["twofa_enabled"],
+                            user["role"])
             login_user(user_obj)
             return redirect(url_for("dashboard"))
 
@@ -339,7 +392,6 @@ def twofa_setup():
                            twofa_enabled=user["twofa_enabled"])
 
 
-
 # -------------- Роли --------------
 
 @app.route("/set_role/<int:target_user_id>/<role>")
@@ -353,15 +405,24 @@ def set_role(target_user_id, role):
     return f"Пользователю {target_user_id} назначена роль {role}"
 
 
+@app.route("/users")
+@login_required
+def users():
+    # Только администратор имеет доступ
+    if current_user.role != "admin":
+        return "Недостаточно прав для доступа к управлению пользователями", 403
+    user_list = database.get_all_users()
+    return render_template("users.html", users=user_list)
+
 
 # -------------- Управление серверами --------------
 
 @app.route("/servers", methods=["GET", "POST"])
 def servers_list():
-    if "logged_in" not in session:
+    if not current_user.is_authenticated:
         return redirect(url_for("login"))
-    user_id = session["user_id"]
-    role = session["role"]
+    user_id = current_user.id
+    role = current_user.role
 
     if request.method == "POST":
         name = request.form["name"]
@@ -399,7 +460,6 @@ def servers_edit(server_id):
     return render_template("servers_edit.html", server=s)
 
 
-
 @app.route("/servers/<int:server_id>/delete", methods=["POST"])
 @login_required
 def servers_delete(server_id):
@@ -414,14 +474,14 @@ def servers_delete(server_id):
     return redirect(url_for("servers_list"))
 
 
-
 # -------------- Отчёты --------------
 
 @app.route("/report")
 @login_required
 def report():
-    user_id = session["user_id"]
-    role = session["role"]
+    # Используем current_user для получения id и роли
+    user_id = current_user.id
+    role = current_user.role
 
     days = request.args.get("days", "1")
     try:
@@ -445,7 +505,6 @@ def report():
 
         # Новые метрики
         swaps = [r[7] for r in rows if r[7] is not None]
-        # uptime — строка, поэтому возьмем последнее значение:
         latest_uptime = rows[-1][8]
         procs = [r[9] for r in rows if r[9] is not None]
         threads = [r[10] for r in rows if r[10] is not None]
@@ -453,80 +512,85 @@ def report():
         tx_errs = [r[12] for r in rows if r[12] is not None]
         powers = [r[13] for r in rows if r[13] is not None]
 
-        # Вычисления статистики по метрикам
-        cpu_avg = sum(cpus) / len(cpus) if cpus else None
+        # Вычисление статистики
+        cpu_avg = sum(cpus)/len(cpus) if cpus else None
         cpu_min = min(cpus) if cpus else None
         cpu_max = max(cpus) if cpus else None
 
-        ram_avg = sum(rams) / len(rams) if rams else None
+        ram_avg = sum(rams)/len(rams) if rams else None
         ram_min = min(rams) if rams else None
         ram_max = max(rams) if rams else None
 
-        disk_avg = sum(disks) / len(disks) if disks else None
+        disk_avg = sum(disks)/len(disks) if disks else None
         disk_min = min(disks) if disks else None
         disk_max = max(disks) if disks else None
 
-        users_avg = sum(users_) / len(users_) if users_ else None
+        users_avg = sum(users_)/len(users_) if users_ else None
         users_min = min(users_) if users_ else None
         users_max = max(users_) if users_ else None
 
-        temp_avg = sum(temps) / len(temps) if temps else None
+        temp_avg = sum(temps)/len(temps) if temps else None
         temp_min = min(temps) if temps else None
         temp_max = max(temps) if temps else None
 
-        net_rx_avg = sum(net_rxs) / len(net_rxs) if net_rxs else None
+        net_rx_avg = sum(net_rxs)/len(net_rxs) if net_rxs else None
         net_rx_min = min(net_rxs) if net_rxs else None
         net_rx_max = max(net_rxs) if net_rxs else None
 
-        net_tx_avg = sum(net_txs) / len(net_txs) if net_txs else None
+        net_tx_avg = sum(net_txs)/len(net_txs) if net_txs else None
         net_tx_min = min(net_txs) if net_txs else None
         net_tx_max = max(net_txs) if net_txs else None
 
-        swap_avg = sum(swaps) / len(swaps) if swaps else None
+        swap_avg = sum(swaps)/len(swaps) if swaps else None
         swap_min = min(swaps) if swaps else None
         swap_max = max(swaps) if swaps else None
 
-        procs_avg = sum(procs) / len(procs) if procs else None
+        procs_avg = sum(procs)/len(procs) if procs else None
         procs_min = min(procs) if procs else None
         procs_max = max(procs) if procs else None
 
-        threads_avg = sum(threads) / len(threads) if threads else None
+        threads_avg = sum(threads)/len(threads) if threads else None
         threads_min = min(threads) if threads else None
         threads_max = max(threads) if threads else None
 
-        rx_err_avg = sum(rx_errs) / len(rx_errs) if rx_errs else None
+        rx_err_avg = sum(rx_errs)/len(rx_errs) if rx_errs else None
         rx_err_min = min(rx_errs) if rx_errs else None
         rx_err_max = max(rx_errs) if rx_errs else None
 
-        tx_err_avg = sum(tx_errs) / len(tx_errs) if tx_errs else None
+        tx_err_avg = sum(tx_errs)/len(tx_errs) if tx_errs else None
         tx_err_min = min(tx_errs) if tx_errs else None
         tx_err_max = max(tx_errs) if tx_errs else None
 
-        power_avg = sum(powers) / len(powers) if powers else None
+        power_avg = sum(powers)/len(powers) if powers else None
         power_min = min(powers) if powers else None
         power_max = max(powers) if powers else None
 
+        # Функция форматирования: если значение существует – округляет, иначе возвращает сообщение "нет данных"
+        def fmt(value, ndigits=2):
+            return round(value, ndigits) if value is not None else "нет данных"
+
         return render_template("report.html",
                                days=days,
-                               cpu_avg=cpu_avg, cpu_min=cpu_min, cpu_max=cpu_max,
-                               ram_avg=ram_avg, ram_min=ram_min, ram_max=ram_max,
-                               disk_avg=disk_avg, disk_min=disk_min, disk_max=disk_max,
-                               users_avg=users_avg, users_min=users_min, users_max=users_max,
-                               temp_avg=temp_avg, temp_min=temp_min, temp_max=temp_max,
-                               net_rx_avg=net_rx_avg, net_rx_min=net_rx_min / 1024 / 1024 if net_rx_min else 0,
-                               net_rx_max=net_rx_max / 1024 / 1024 if net_rx_max else 0,
-                               net_tx_avg=net_tx_avg, net_tx_min=net_tx_min / 1024 / 1024 if net_tx_min else 0,
-                               net_tx_max=net_tx_max / 1024 / 1024 if net_tx_max else 0,
-                               swap_avg=swap_avg, swap_min=swap_min, swap_max=swap_max,
+                               cpu_avg=fmt(cpu_avg), cpu_min=fmt(cpu_min), cpu_max=fmt(cpu_max),
+                               ram_avg=fmt(ram_avg), ram_min=fmt(ram_min), ram_max=fmt(ram_max),
+                               disk_avg=fmt(disk_avg), disk_min=fmt(disk_min), disk_max=fmt(disk_max),
+                               users_avg=fmt(users_avg, 0), users_min=fmt(users_min, 0), users_max=fmt(users_max, 0),
+                               temp_avg=fmt(temp_avg, 1), temp_min=fmt(temp_min, 1), temp_max=fmt(temp_max, 1),
+                               net_rx_avg=fmt(net_rx_avg), net_rx_min=fmt(net_rx_min) if net_rx_min is not None else 0,
+                               net_rx_max=fmt(net_rx_max) if net_rx_max is not None else 0,
+                               net_tx_avg=fmt(net_tx_avg), net_tx_min=fmt(net_tx_min) if net_tx_min is not None else 0,
+                               net_tx_max=fmt(net_tx_max) if net_tx_max is not None else 0,
+                               swap_avg=fmt(swap_avg), swap_min=fmt(swap_min), swap_max=fmt(swap_max),
                                latest_uptime=latest_uptime,
-                               procs_avg=procs_avg, procs_min=procs_min, procs_max=procs_max,
-                               threads_avg=threads_avg, threads_min=threads_min, threads_max=threads_max,
-                               rx_err_avg=rx_err_avg, rx_err_min=rx_err_min, rx_err_max=rx_err_max,
-                               tx_err_avg=tx_err_avg, tx_err_min=tx_err_min, tx_err_max=tx_err_max,
-                               power_avg=power_avg, power_min=power_min, power_max=power_max
+                               procs_avg=fmt(procs_avg, 0), procs_min=fmt(procs_min, 0), procs_max=fmt(procs_max, 0),
+                               threads_avg=fmt(threads_avg, 0), threads_min=fmt(threads_min, 0), threads_max=fmt(threads_max, 0),
+                               rx_err_avg=fmt(rx_err_avg), rx_err_min=fmt(rx_err_min), rx_err_max=fmt(rx_err_max),
+                               tx_err_avg=fmt(tx_err_avg), tx_err_min=fmt(tx_err_min), tx_err_max=fmt(tx_err_max),
+                               power_avg=fmt(power_avg), power_min=fmt(power_min), power_max=fmt(power_max)
                                )
     except Exception as e:
         return f"Ошибка при формировании отчёта: {str(e)}"
+
 
 
 # -------------- Экспорт CSV --------------
@@ -553,7 +617,6 @@ def export_data():
         as_attachment=True,
         download_name="metrics_export.csv"
     )
-
 
 
 # -------------- Динамический дашборд --------------
@@ -590,7 +653,6 @@ def disconnect():
     return redirect(url_for("dashboard_custom"))
 
 
-
 # ------------ Вспомогательное -----------
 
 def generate_2fa_code():
@@ -602,3 +664,39 @@ def generate_2fa_code():
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template("404.html"), 404
+
+
+@app.route("/logs")
+@login_required
+def logs():
+    # Только администратор может просматривать журнал логов
+    if current_user.role != "admin":
+        return "Недостаточно прав для просмотра журнала логов", 403
+    try:
+        with open("app.log", "r", encoding="utf-8") as f:
+            log_content = f.read()
+    except Exception as e:
+        log_content = f"Ошибка чтения журнала логов: {str(e)}"
+    return render_template("logs.html", log_content=log_content)
+
+
+@app.route("/admin")
+@login_required
+def admin_panel():
+    if current_user.role != "admin":
+        return "Недостаточно прав для доступа к админ-панели", 403
+
+    if os.path.exists("app.log"):
+        with open("app.log", "r", encoding="utf-8") as f:
+            logs = f.readlines()[-500:]
+    else:
+        logs = []
+
+    user_list = database.get_all_users()
+    return render_template("admin_panel.html", users=user_list, logs="".join(logs))
+
+
+@app.errorhandler(BrokenPipeError)
+def handle_broken_pipe_error(error):
+    app.logger.error("Broken pipe error: %s", error)
+    return "", 204

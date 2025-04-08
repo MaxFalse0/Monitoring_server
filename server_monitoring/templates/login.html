@@ -35,12 +35,11 @@
                 <input type="password" name="password" id="password" placeholder="Пароль" required>
                 <span class="toggle-icon" onclick="togglePassword()" title="Показать/скрыть пароль">👁</span>
             </div>
-            <button type="submit">Войти</button>
+            <button type="submit" class="btn-connect">Войти</button>
         </form>
-        <a href="{{ url_for('register') }}">Нет аккаунта? Зарегистрируйтесь</a>
+        <a href="{{ url_for('register') }}" class="btn-small">Нет аккаунта? Зарегистрируйтесь</a>
     </div>
 </div>
-
 <script>
     function togglePassword() {
         const passInput = document.getElementById("password");

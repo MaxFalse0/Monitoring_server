@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Панель управления администратора{% endblock %}
+{% block content %}
+<h1 class="page-title">Панель управления администратора</h1>
+
+<!-- Блок навигации по админке -->
+<div class="admin-menu" style="margin-bottom: 20px;">
+  <a href="{{ url_for('admin_panel') }}">Обзор</a> |
+  <a href="{{ url_for('dashboard_custom') }}">Графики</a> |
+  <a href="{{ url_for('servers_list') }}">Сервера</a>
+</div>
+
+<section id="admin-overview" style="margin-bottom: 40px;">
+  <h2>Обзор системы</h2>
+  <p>Здесь можно разместить общую статистику: количество пользователей, серверов, последние события и т.д.</p>
+</section>
+
+<section id="user-management" style="margin-bottom: 40px;">
+  <h2>Управление пользователями</h2>
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Имя пользователя</th>
+        <th>Telegram</th>
+        <th>2FA</th>
+        <th>Роль</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+      <tr>
+        <td>{{ user.id }}</td>
+        <td>{{ user.username }}</td>
+        <td>{{ user.telegram_username or "—" }}</td>
+        <td>{{ "Включено" if user.twofa_enabled else "Выключено" }}</td>
+        <td>{{ user.role }}</td>
+        <td>
+          {% if user.role != "admin" %}
+            <a href="{{ url_for('set_role', target_user_id=user.id, role='admin') }}" class="btn">Сделать админом</a>
+          {% else %}
+            <a href="{{ url_for('set_role', target_user_id=user.id, role='user') }}" class="btn btn-danger">Сделать пользователем</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section id="logs">
+  <h2>Журнал логов</h2>
+  {% if logs %}
+    <div class="log-container" style="white-space: pre-wrap; background-color: #1f1f1f; color: #dcdcdc; padding: 20px; border-radius: 8px; font-family: monospace; max-height: 600px; overflow-y: auto;">
+      {{ logs }}
+    </div>
+  {% else %}
+    <p>Логи пока отсутствуют</p>
+  {% endif %}
+  <p style="margin-top: 10px;">
+    <a href="{{ url_for('admin_panel') }}" class="btn">Обновить журнал</a>
+  </p>
+</section>
+{% endblock %}

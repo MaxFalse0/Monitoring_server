@@ -36,7 +36,7 @@
             <div class="input-group">
                 <input type="text" name="code" id="code" placeholder="Введите код из Telegram" required>
             </div>
-            <button type="submit">✅ Подтвердить</button>
+            <button type="submit" class="btn-confirm">✅ Подтвердить</button>
         </form>
 
         <div class="hint">
@@ -50,29 +50,21 @@
             </span>
         </div>
 
-        <button id="resend-btn" type="button" class="resend-btn {% if remaining > 0 %}disabled{% endif %}" {% if remaining > 0 %}disabled{% endif %}>
-            🔁 Отправить код повторно
+        <button id="resend-btn" type="button" class="resend-btn btn-small {% if remaining > 0 %}disabled{% endif %}" {% if remaining > 0 %}disabled{% endif %}>
+            Отправить код повторно
         </button>
 
-        <a href="{{ url_for('login') }}" style="display:block;margin-top:15px;">← Назад к входу</a>
+        <a href="{{ url_for('login') }}" class="btn-small" style="display:block;margin-top:15px;">← Назад к входу</a>
     </div>
 </div>
-
 <script>
     document.getElementById("code").focus();
-
     let seconds = {{ remaining or 0 }};
     const timerSpan = document.getElementById("timer");
     const resendBtn = document.getElementById("resend-btn");
-
     function updateTimerText() {
-        if (seconds > 0) {
-            timerSpan.textContent = `Ожидайте ${seconds} сек.`;
-        } else {
-            timerSpan.textContent = "Вы можете запросить новый код.";
-        }
+        timerSpan.textContent = seconds > 0 ? `Ожидайте ${seconds} сек.` : "Вы можете запросить новый код.";
     }
-
     function startTimer() {
         updateTimerText();
         const countdown = setInterval(() => {
@@ -88,7 +80,6 @@
             }
         }, 1000);
     }
-
     resendBtn.addEventListener("click", () => {
         resendBtn.disabled = true;
         resendBtn.classList.add("disabled");
@@ -99,20 +90,14 @@
                     seconds = 60;
                     startTimer();
                 } else {
-                    alert("Ошибка при повторной отправке кода: " + (data.message || "Неизвестная"));
+                    alert("Ошибка: " + (data.message || "Неизвестная"));
                 }
             })
-            .catch(error => {
-                alert("Сетевая ошибка: " + error);
-            });
+            .catch(error => alert("Сетевая ошибка: " + error));
     });
-
     if (seconds > 0) {
         resendBtn.disabled = true;
         resendBtn.classList.add("disabled");
-    } else {
-        resendBtn.disabled = false;
-        resendBtn.classList.remove("disabled");
     }
     startTimer();
 </script>

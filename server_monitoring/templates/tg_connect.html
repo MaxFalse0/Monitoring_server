@@ -52,22 +52,6 @@
             border-radius: 8px;
             margin-top: 10px;
         }
-        .btn {
-            display: block;
-            margin-top: 20px;
-            padding: 12px;
-            width: 100%;
-            background: #6e7191;
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: 0.3s ease;
-        }
-        .btn:hover {
-            background: #888bb0;
-        }
         .back-link {
             display: block;
             margin-top: 20px;
@@ -103,10 +87,10 @@
         <div class="form-hint">
             Где взять <b>chat_id</b>? Напишите <code>/start</code> боту <b>{{ bot_name }}</b> и скопируйте ID из сообщения.
         </div>
-        <button type="submit" class="btn">📲 Привязать Telegram</button>
+        <button type="submit" class="btn-connect">📲 Привязать Telegram</button>
     </form>
 
-    <a href="{{ url_for('dashboard') }}" class="back-link">← Назад к панели</a>
+    <a href="{{ url_for('dashboard') }}" class="btn-small back-link">← Назад к панели</a>
 </div>
 </body>
 </html>

@@ -1,0 +1,12 @@
+@app.route("/logs")
+@login_required
+def logs():
+    # Только администратор может просматривать журнал логов
+    if current_user.role != "admin":
+        return "Недостаточно прав для просмотра журнала логов", 403
+    try:
+        with open("app.log", "r", encoding="utf-8") as f:
+            log_content = f.read()
+    except Exception as e:
+        log_content = f"Ошибка чтения журнала логов: {str(e)}"
+    return render_template("logs.html", log_content=log_content)

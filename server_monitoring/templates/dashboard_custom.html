@@ -10,7 +10,7 @@
         <span id="conn-status" style="color: var(--success);">Загрузка...</span>
     </div>
     <form method="get" action="{{ url_for('disconnect') }}">
-        <button type="submit" id="disconnect-btn" style="display:none;" class="btn danger">🔌 Отключиться</button>
+        <button type="submit" id="disconnect-btn" style="display:none;" class="btn-confirm">Отключиться</button>
     </form>
 </div>
 
@@ -67,7 +67,6 @@
 </div>
 
 <p style="margin-top:20px;">Последнее обновление: <span id="last-update">--:--</span></p>
-
 <!-- Стили для обновленного интерфейса -->
 <style>
     .grid-gauges {

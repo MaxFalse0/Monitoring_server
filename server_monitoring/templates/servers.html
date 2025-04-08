@@ -17,10 +17,10 @@
                 <td>{{ s.port }}</td>
                 <td>{{ s.ssh_user }}</td>
                 <td>
-                    <a href="{{ url_for('servers_edit', server_id=s.id) }}" class="btn">Редактировать</a>
+                    <a href="{{ url_for('servers_edit', server_id=s.id) }}" class="btn-small">Редактировать</a>
                     <form method="POST" action="{{ url_for('servers_delete', server_id=s.id) }}" style="display:inline;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button class="btn" style="background:var(--danger);color:#fff;" type="submit">Удалить</button>
+                        <button class="btn-confirm" type="submit">Удалить</button>
                     </form>
                 </td>
             </tr>
@@ -48,7 +48,7 @@
         <div class="input-group">
             <input type="password" name="ssh_password" placeholder="SSH пароль" required>
         </div>
-        <button type="submit">➕ Добавить</button>
+        <button type="submit" class="btn-connect">➕ Добавить</button>
     </form>
 </div>
 {% endblock %}

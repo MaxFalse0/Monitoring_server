@@ -42,7 +42,6 @@
                 <input type="text" name="username" id="username" placeholder="Имя пользователя" required>
                 <div id="username-hint" class="hint"></div>
             </div>
-
             <div class="input-group">
                 <input type="password" name="password" id="password" placeholder="Пароль" required>
                 <span class="generate-icon" onclick="generatePassword()" title="Сгенерировать пароль">⚙️</span>
@@ -55,17 +54,15 @@
                     <div class="hint" id="p-special">Спецсимвол (!@#$...)</div>
                 </div>
             </div>
-            <button type="submit">Зарегистрироваться</button>
+            <button type="submit" class="btn-connect">Зарегистрироваться</button>
         </form>
-        <a href="{{ url_for('login') }}">Уже есть аккаунт? Войти</a>
+        <a href="{{ url_for('login') }}" class="btn-small">Уже есть аккаунт? Войти</a>
     </div>
 </div>
-
 <script>
     const usernameInput = document.getElementById("username");
     const usernameHint = document.getElementById("username-hint");
     const passwordInput = document.getElementById("password");
-
     const checks = {
         length: { el: document.getElementById("p-length"), valid: p => p.length >= 8 },
         upper: { el: document.getElementById("p-uppercase"), valid: p => /[A-Z]/.test(p) },
@@ -73,7 +70,6 @@
         digit: { el: document.getElementById("p-digit"), valid: p => /\d/.test(p) },
         special: { el: document.getElementById("p-special"), valid: p => /[!@#$%^&*()_+{}\[\]:;"'<>,.?\\/-]/.test(p) }
     };
-
     function updateHints() {
         const p = passwordInput.value;
         for (const key in checks) {
@@ -81,7 +77,6 @@
             el.className = "hint " + (valid(p) ? "valid" : "invalid");
         }
     }
-
     function updateUsernameHint() {
         const u = usernameInput.value;
         if (u.length < 4) {
@@ -95,27 +90,20 @@
             usernameHint.className = "hint valid";
         }
     }
-
     function validateForm() {
         updateHints();
         updateUsernameHint();
-
         const password = passwordInput.value;
         const username = usernameInput.value;
-
         const allValid = Object.values(checks).every(c => c.valid(password));
         const validUsername = username.length >= 4 && /^[a-zA-Z0-9_]+$/.test(username);
-
         return allValid && validUsername;
     }
-
     passwordInput.addEventListener("input", updateHints);
     usernameInput.addEventListener("input", updateUsernameHint);
-
     function togglePassword() {
         passwordInput.type = passwordInput.type === "password" ? "text" : "password";
     }
-
     function generatePassword() {
         const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=<>?";
         let password = "";

@@ -2,6 +2,7 @@ import sqlite3
 import datetime
 from server_monitoring.config import DB_NAME, DATA_RETENTION_DAYS
 
+
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -58,6 +59,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def save_metrics(user_id, cpu, ram, disk, net_rx, net_tx, users=0, temp=0.0,
                  swap=0.0, uptime="", processes=0, threads=0, rx_err=0.0, tx_err=0.0, power=0.0):
     """
@@ -76,9 +78,11 @@ def save_metrics(user_id, cpu, ram, disk, net_rx, net_tx, users=0, temp=0.0,
             user_id, cpu, ram, disk, net_rx, net_tx, users, temp, swap, uptime, processes, threads, rx_err, tx_err, power
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (user_id, cpu, ram, disk, net_rx, net_tx, users, temp, swap, uptime, processes, threads, rx_err, tx_err, power))
+    ''', (
+    user_id, cpu, ram, disk, net_rx, net_tx, users, temp, swap, uptime, processes, threads, rx_err, tx_err, power))
     conn.commit()
     conn.close()
+
 
 def get_latest_metrics(user_id, role):
     """
@@ -125,6 +129,7 @@ def get_latest_metrics(user_id, role):
         }
     return None
 
+
 def get_user_by_id(user_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -146,6 +151,7 @@ def get_user_by_id(user_id):
         }
     return None
 
+
 def update_user_telegram(user_id, telegram_username):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -156,6 +162,7 @@ def update_user_telegram(user_id, telegram_username):
     ''', (telegram_username, user_id))
     conn.commit()
     conn.close()
+
 
 def set_twofa_enabled(user_id, enable: bool):
     val = 1 if enable else 0
@@ -169,6 +176,7 @@ def set_twofa_enabled(user_id, enable: bool):
     conn.commit()
     conn.close()
 
+
 def set_user_role(user_id, role):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -179,6 +187,7 @@ def set_user_role(user_id, role):
     ''', (role, user_id))
     conn.commit()
     conn.close()
+
 
 # ----------- SERVERS -----------
 
@@ -191,6 +200,7 @@ def create_server(user_id, name, ip, port, ssh_user, ssh_password):
     ''', (user_id, name, ip, port, ssh_user, ssh_password))
     conn.commit()
     conn.close()
+
 
 def get_servers_for_user(user_id, user_role):
     conn = sqlite3.connect(DB_NAME)
@@ -223,6 +233,7 @@ def get_servers_for_user(user_id, user_role):
         })
     return servers
 
+
 def get_server_by_id(server_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -245,6 +256,7 @@ def get_server_by_id(server_id):
         }
     return None
 
+
 def update_server(server_id, name, ip, port, ssh_user, ssh_password):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -256,12 +268,14 @@ def update_server(server_id, name, ip, port, ssh_user, ssh_password):
     conn.commit()
     conn.close()
 
+
 def delete_server(server_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM servers WHERE id=?', (server_id,))
     conn.commit()
     conn.close()
+
 
 # ----------- REPORTS & CLEANUP --------------
 
@@ -291,6 +305,7 @@ def get_metrics_for_period(user_id, role, days=1):
     conn.close()
     return rows
 
+
 def cleanup_old_metrics():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -302,6 +317,7 @@ def cleanup_old_metrics():
     conn.commit()
     conn.close()
     print(f"cleanup_old_metrics: Deleted {deleted} old rows")
+
 
 def get_all_metrics(user_id, role):
     """
@@ -326,3 +342,25 @@ def get_all_metrics(user_id, role):
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+
+def get_all_users():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, username, telegram_username, twofa_enabled, role
+        FROM users
+        ORDER BY id
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    users = []
+    for r in rows:
+        users.append({
+            "id": r[0],
+            "username": r[1],
+            "telegram_username": r[2],
+            "twofa_enabled": r[3],
+            "role": r[4]
+        })
+    return users
