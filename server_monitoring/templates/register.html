@@ -37,6 +37,7 @@
             <div class="error">{{ error }}</div>
         {% endif %}
         <form method="post" onsubmit="return validateForm()">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="input-group">
                 <input type="text" name="username" id="username" placeholder="Имя пользователя" required>
                 <div id="username-hint" class="hint"></div>

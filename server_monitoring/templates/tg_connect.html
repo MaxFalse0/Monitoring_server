@@ -96,6 +96,7 @@
     {% endif %}
 
     <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="input-group">
             <input type="text" name="telegram_username" placeholder="Введите ваш chat_id" required>
         </div>

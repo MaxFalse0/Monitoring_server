@@ -16,10 +16,11 @@ from server_monitoring.database import get_metrics_for_period, get_all_metrics, 
 from server_monitoring.socketio_manager import socketio
 from server_monitoring.security import register_security_headers
 from flask_login import login_required
+from flask_wtf.csrf import CSRFProtect
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
-
+csrf = CSRFProtect(app)
 socketio.init_app(app, cors_allowed_origins="*")  # или SOCKETIO_CORS_ALLOWED_ORIGINS
 
 

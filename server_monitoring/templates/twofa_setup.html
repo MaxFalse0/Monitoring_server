@@ -11,6 +11,7 @@
     </p>
 
     <form method="POST" style="margin-top: 20px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% if twofa_enabled %}
             <button name="action" value="disable" class="btn" style="background:var(--danger);color:#fff;">Отключить</button>
         {% else %}

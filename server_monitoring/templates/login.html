@@ -27,6 +27,7 @@
             <div class="error">{{ error }}</div>
         {% endif %}
         <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="input-group">
                 <input type="text" name="username" placeholder="Имя пользователя" required>
             </div>

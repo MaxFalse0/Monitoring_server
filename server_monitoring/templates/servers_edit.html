@@ -6,6 +6,7 @@
 {% if server %}
 <div class="connect-form">
     <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="input-group">
             <input type="text" name="name" value="{{ server.name }}" placeholder="Название" required>
         </div>

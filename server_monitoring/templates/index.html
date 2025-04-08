@@ -45,6 +45,7 @@
 <div class="connect-form island" style="margin-top: 40px;">
     <h2>🔌 Подключить новый сервер вручную</h2>
     <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="input-group">
             <input type="text" name="server_ip" placeholder="IP адрес" required>
         </div>
@@ -64,6 +65,7 @@
 <div class="connect-form island" style="margin-top: 40px;">
     <h2>📡 Быстрое подключение к сохранённому серверу</h2>
     <form method="POST" action="{{ url_for('connect_existing_server') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="input-group" style="display: flex; align-items: center;">
             <select name="server_id" required style="flex: 1; padding: 10px; border-radius: 8px; background: #1e1e1e; color: #fff; border: 1px solid var(--primary);">
                 <option value="" disabled selected>Выберите сервер...</option>

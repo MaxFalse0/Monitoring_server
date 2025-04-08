@@ -32,6 +32,7 @@
         {% endif %}
 
         <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="input-group">
                 <input type="text" name="code" id="code" placeholder="Введите код из Telegram" required>
             </div>
@@ -60,7 +61,6 @@
 <script>
     document.getElementById("code").focus();
 
-    // Инициализируем счетчик из переменной remaining, переданной из маршрута.
     let seconds = {{ remaining or 0 }};
     const timerSpan = document.getElementById("timer");
     const resendBtn = document.getElementById("resend-btn");
@@ -96,7 +96,6 @@
             .then(res => res.json())
             .then(data => {
                 if (data.status === "ok") {
-                    // После успешной отправки новый код устанавливаем таймер на 60 сек.
                     seconds = 60;
                     startTimer();
                 } else {
@@ -108,7 +107,6 @@
             });
     });
 
-    // Если первоначально seconds равно 0, сразу запускаем таймер (или кнопка остаётся активной)
     if (seconds > 0) {
         resendBtn.disabled = true;
         resendBtn.classList.add("disabled");
