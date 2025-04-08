@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 from flask_socketio import SocketIO, emit
 import time
 from server_monitoring.collect import collect_metrics
-from server_monitoring.auth import login_user, register_user
+from server_monitoring.auth import login_user as auth_login_user, register_user
 from server_monitoring import database
 from server_monitoring.analyze import send_telegram_alert
 from server_monitoring.config import TWOFA_CODE_LENGTH, SOCKETIO_CORS_ALLOWED_ORIGINS
@@ -17,28 +17,39 @@ from server_monitoring.socketio_manager import socketio
 from server_monitoring.security import register_security_headers
 from flask_login import login_required
 from flask_wtf.csrf import CSRFProtect
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from server_monitoring.database import get_user_by_id
+from server_monitoring.user import User
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 csrf = CSRFProtect(app)
 socketio.init_app(app, cors_allowed_origins="*")  # или SOCKETIO_CORS_ALLOWED_ORIGINS
 
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    user = get_user_by_id(user_id)
+    if user:
+        return User(user["id"], user["username"], user["telegram_username"], user["twofa_enabled"], user["role"])
+    return None
+
+
+from flask_login import current_user
 
 @app.before_request
 def check_session():
     allowed_routes = (
         "login", "register", "twofa_verify", "resend_code",
-        "static", "export_data",
-        "socketio_test", "socketio_test_emit"
+        "static", "export_data", "socketio_test", "socketio_test_emit"
     )
-    # Если не авторизован => уходим на login
-    if request.endpoint not in allowed_routes and "logged_in" not in session:
-        if "partial_login" in session and request.endpoint == "twofa_verify":
-            return None
-        elif "partial_login" in session:
-            return redirect(url_for("twofa_verify"))
-        else:
-            return redirect(url_for("login"))
+    if request.endpoint not in allowed_routes and not current_user.is_authenticated:
+        return redirect(url_for("login"))
+
 
 
 # -------------- Авторизация --------------
@@ -61,44 +72,57 @@ def login():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
-        user = login_user(username, password)
-        if user:
-            if user["twofa_enabled"] == 1 and user["telegram_username"]:
+        # Используем функцию аутентификации из auth
+        user_record = auth_login_user(username, password)  # возвращает словарь пользователя
+
+        if user_record:
+            # Если включена 2FA, оставляем прежнюю логику двухфакторки
+            if user_record["twofa_enabled"] == 1 and user_record["telegram_username"]:
                 code = generate_2fa_code()
                 session["twofa_code"] = code
-                session["twofa_timestamp"] = time.time()  # импортируй time сверху
+                session["twofa_timestamp"] = time.time()
                 session["partial_login"] = True
-                session["user_id"] = user["id"]
-                send_telegram_alert(user["telegram_username"], f"Ваш код для входа: {code}")
+                session["user_id"] = user_record["id"]
+                send_telegram_alert(user_record["telegram_username"], f"Ваш код для входа: {code}")
                 return redirect(url_for("twofa_verify"))
             else:
-                session["logged_in"] = True
-                session["user_id"] = user["id"]
-                session["telegram_username"] = user["telegram_username"]
-                session["role"] = user["role"]
+                # Создаем объект пользователя и логиним через Flask-Login
+                user_obj = User(
+                    user_record["id"],
+                    user_record["username"],
+                    user_record["telegram_username"],
+                    user_record["twofa_enabled"],
+                    user_record["role"]
+                )
+                login_user(user_obj)  # теперь используем login_user из flask_login
                 return redirect(url_for("dashboard"))
         else:
             return render_template("login.html", error="Неверный логин или пароль")
     return render_template("login.html", error=None)
 
 
+
+
 @app.route("/logout")
+@login_required
 def logout():
-    session.clear()
+    logout_user()
     return redirect(url_for("login"))
+
 
 
 # -------------- Главная страница ("/") --------------
 
 @app.route("/", methods=["GET", "POST"])
+@login_required
 def dashboard():
     """
-    Если POST – запуск асинхронного сбора метрик через celery,
+    Если POST – запуск асинхронного сбора метрик через Celery,
     если GET – показ текущего состояния и списка серверов.
     """
     global connection_status
-    user_id = session["user_id"]
-    user_role = session["role"]
+    user_id = current_user.id
+    user_role = current_user.role
 
     if request.method == "POST":
         server_ip = request.form["server_ip"]
@@ -106,11 +130,10 @@ def dashboard():
         ssh_user = request.form["username"]
         ssh_password = request.form["password"]
 
-        # Обновляем статус для отображения (будет показывать, что задача поставлена)
         connection_status["status"] = "Задача по сбору метрик поставлена в очередь..."
         connection_status["error"] = None
 
-        tg_username = session.get("telegram_username")
+        tg_username = current_user.telegram_username
         # Запускаем асинхронную задачу через Celery
         task_collect_metrics.delay(server_ip, server_port, ssh_user, ssh_password, user_id, tg_username)
 
@@ -125,15 +148,17 @@ def dashboard():
                                servers=get_user_servers())
 
 
+
 @app.route("/connect_existing_server", methods=["POST"])
+@login_required
 def connect_existing_server():
     """
     Вызывается при выборе сервера из списка (index.html).
-    Используем сохранённые данные (ip,port и т.д.) и запускаем collect_metrics
+    Используем сохранённые данные (ip,port и т.д.) и запускаем collect_metrics.
     """
     global connection_status
-    user_id = session["user_id"]
-    user_role = session["role"]
+    user_id = current_user.id
+    user_role = current_user.role
     server_id = request.form.get("server_id")
 
     if not server_id:
@@ -143,14 +168,14 @@ def connect_existing_server():
     if not s:
         return redirect(url_for("dashboard"))
 
-    # Проверка: admin видит все, user видит только свои
     if user_role != "admin" and s["user_id"] != user_id:
         return "Недостаточно прав для подключения к этому серверу"
 
     connection_status["status"] = "Connecting to existing server..."
     connection_status["error"] = None
 
-    tg_username = session.get("telegram_username")
+    tg_username = current_user.telegram_username
+    # Здесь можно оставить запуск через отдельный поток, если не хотите переключаться полностью на Celery:
     threading.Thread(
         target=collect_metrics,
         args=(s["ip"], s["port"], s["ssh_user"], s["ssh_password"], connection_status, tg_username, user_id),
@@ -160,70 +185,26 @@ def connect_existing_server():
     return redirect(url_for("dashboard"))
 
 
+
 def get_user_servers():
     """
-    Возвращает список серверов для текущего пользователя (или все, если admin)
+    Возвращает список серверов для текущего пользователя (или все, если admin).
     """
-    if "logged_in" not in session:
+    # Если пользователь не авторизован, current_user.is_authenticated вернет False.
+    if not current_user.is_authenticated:
         return []
-    user_id = session["user_id"]
-    role = session["role"]
+    user_id = current_user.id
+    role = current_user.role
     servers = database.get_servers_for_user(user_id, role)
     return servers
 
 
-# @app.route("/data")
-# def get_data():
-#     user_id = session["user_id"]
-#     user_role = session["role"]
-#     latest = database.get_latest_metrics(user_id, user_role)
-#
-#     if not latest:
-#         return jsonify({"metrics": {}, "status": connection_status})
-#
-#     metrics = {
-#         "cpu": latest["cpu"],
-#         "cpu_avg": latest.get("cpu_avg", latest["cpu"]),
-#         "cpu_min": latest.get("cpu_min", latest["cpu"]),
-#         "cpu_max": latest.get("cpu_max", latest["cpu"]),
-#
-#         "ram": latest["ram"],
-#         "ram_avg": latest.get("ram_avg", latest["ram"]),
-#         "ram_min": latest.get("ram_min", latest["ram"]),
-#         "ram_max": latest.get("ram_max", latest["ram"]),
-#
-#         "disk": latest["disk"],
-#         "disk_avg": latest.get("disk_avg", latest["disk"]),
-#         "disk_min": latest.get("disk_min", latest["disk"]),
-#         "disk_max": latest.get("disk_max", latest["disk"]),
-#
-#         "temp": latest["temp"],
-#         "temp_avg": latest.get("temp_avg", latest["temp"]),
-#         "temp_min": latest.get("temp_min", latest["temp"]),
-#         "temp_max": latest.get("temp_max", latest["temp"]),
-#
-#         "users": latest["users"],
-#         "users_avg": latest.get("users_avg", latest["users"]),
-#         "users_min": latest.get("users_min", latest["users"]),
-#         "users_max": latest.get("users_max", latest["users"]),
-#
-#         # 👇 ДОБАВЛЯЕМ СЕТЬ
-#         "rx": latest["net_rx"],
-#         "tx": latest["net_tx"],
-#         "rx_avg": latest.get("rx_avg", latest["net_rx"]),
-#         "rx_min": latest.get("rx_min", latest["net_rx"]),
-#         "rx_max": latest.get("rx_max", latest["net_rx"]),
-#
-#         "tx_avg": latest.get("tx_avg", latest["net_tx"]),
-#         "tx_min": latest.get("tx_min", latest["net_tx"]),
-#         "tx_max": latest.get("tx_max", latest["net_tx"]),
-#     }
-#
-#     return jsonify({"metrics": metrics, "status": connection_status})
+
 @app.route("/data")
+@login_required
 def get_data():
-    user_id = session["user_id"]
-    user_role = session["role"]
+    user_id = current_user.id
+    user_role = current_user.role
     latest = database.get_latest_metrics(user_id, user_role)
 
     if not latest:
@@ -249,31 +230,25 @@ def get_data():
     return jsonify({"metrics": metrics, "status": connection_status})
 
 
+
 # -------------- Telegram, 2FA --------------
 
 @app.route("/tg_connect", methods=["GET", "POST"])
+@login_required
 def tg_connect():
-    if "logged_in" not in session:
-        return redirect(url_for("login"))
-
-    user_id = session["user_id"]
-    user = get_user_by_id(user_id)
+    user = get_user_by_id(current_user.id)
     if not user:
         return redirect(url_for("logout"))
 
     if request.method == "POST":
         new_tg = request.form["telegram_username"].strip()
-
-        # ✅ Жёсткая проверка — только цифры (chat_id)
         if not new_tg.isdigit():
             return render_template("tg_connect.html", current_tg=user["telegram_username"],
                                    error="Введите только числовой Telegram ID (chat_id).")
-
-        # Сохраняем
-        database.update_user_telegram(user_id, new_tg)
+        database.update_user_telegram(current_user.id, new_tg)
+        # Обычно current_user не обновляется автоматически, поэтому можно обновить и сессию или перезагрузить объект пользователя.
+        # Здесь для простоты – обновим session.
         session["telegram_username"] = new_tg
-
-        # Пробуем отправить тестовое сообщение
         send_telegram_alert(new_tg, "✅ Вы успешно подключили Telegram-бота!")
         return redirect(url_for("tg_connect"))
 
@@ -283,10 +258,10 @@ def tg_connect():
                            error=None)
 
 
+
 @app.route("/twofa_verify", methods=["GET", "POST"])
 def twofa_verify():
     import time
-
     if "partial_login" not in session:
         return redirect(url_for("login"))
 
@@ -302,18 +277,19 @@ def twofa_verify():
         elif code != session.get("twofa_code"):
             error = "Неверный код"
         else:
-            # Успешная авторизация
+            # Успешная авторизация по 2FA: получаем данные пользователя и логиним через Flask-Login
             user_id = session["user_id"]
             user = get_user_by_id(user_id)
-            session["logged_in"] = True
+            # Очистка временных данных двухфакторной аутентификации
             session.pop("partial_login", None)
             session.pop("twofa_code", None)
             session.pop("twofa_timestamp", None)
-            session["telegram_username"] = user["telegram_username"]
-            session["role"] = user["role"]
+            # Создаем объект пользователя для Flask-Login и отмечаем его как аутентифицированного
+            user_obj = User(user["id"], user["username"], user["telegram_username"], user["twofa_enabled"], user["role"])
+            login_user(user_obj)
             return redirect(url_for("dashboard"))
 
-    # Вычисляем оставшееся время
+    # Вычисляем оставшееся время действия кода
     remaining = 0
     if "twofa_timestamp" in session:
         elapsed = time.time() - session["twofa_timestamp"]
@@ -342,11 +318,9 @@ def resend_code():
 
 
 @app.route("/twofa_setup", methods=["GET", "POST"])
+@login_required
 def twofa_setup():
-    if "logged_in" not in session:
-        return redirect(url_for("login"))
-    user_id = session["user_id"]
-    user = get_user_by_id(user_id)
+    user = get_user_by_id(current_user.id)
     if not user["telegram_username"]:
         return render_template("twofa_setup.html",
                                error="Сначала подключите Telegram (/tg_connect)",
@@ -354,10 +328,10 @@ def twofa_setup():
     if request.method == "POST":
         action = request.form.get("action")
         if action == "enable":
-            database.set_twofa_enabled(user_id, True)
+            database.set_twofa_enabled(current_user.id, True)
             send_telegram_alert(user["telegram_username"], "2FA включена.")
         elif action == "disable":
-            database.set_twofa_enabled(user_id, False)
+            database.set_twofa_enabled(current_user.id, False)
             send_telegram_alert(user["telegram_username"], "2FA выключена.")
         return redirect(url_for("twofa_setup"))
     return render_template("twofa_setup.html",
@@ -365,18 +339,19 @@ def twofa_setup():
                            twofa_enabled=user["twofa_enabled"])
 
 
+
 # -------------- Роли --------------
 
 @app.route("/set_role/<int:target_user_id>/<role>")
+@login_required
 def set_role(target_user_id, role):
-    if "logged_in" not in session:
-        return redirect(url_for("login"))
-    if session.get("role") != "admin":
+    if current_user.role != "admin":
         return "Недостаточно прав"
     if role not in ("admin", "user"):
         return "Неверная роль"
     database.set_user_role(target_user_id, role)
     return f"Пользователю {target_user_id} назначена роль {role}"
+
 
 
 # -------------- Управление серверами --------------
@@ -402,11 +377,10 @@ def servers_list():
 
 
 @app.route("/servers/<int:server_id>/edit", methods=["GET", "POST"])
+@login_required
 def servers_edit(server_id):
-    if "logged_in" not in session:
-        return redirect(url_for("login"))
-    role = session["role"]
-    user_id = session["user_id"]
+    role = current_user.role
+    user_id = current_user.id
     s = get_server_by_id(server_id)
     if not s:
         return "Нет такого сервера"
@@ -425,12 +399,12 @@ def servers_edit(server_id):
     return render_template("servers_edit.html", server=s)
 
 
+
 @app.route("/servers/<int:server_id>/delete", methods=["POST"])
+@login_required
 def servers_delete(server_id):
-    if "logged_in" not in session:
-        return redirect(url_for("login"))
-    role = session["role"]
-    user_id = session["user_id"]
+    role = current_user.role
+    user_id = current_user.id
     s = get_server_by_id(server_id)
     if not s:
         return "Сервер не найден"
@@ -440,12 +414,12 @@ def servers_delete(server_id):
     return redirect(url_for("servers_list"))
 
 
+
 # -------------- Отчёты --------------
 
 @app.route("/report")
+@login_required
 def report():
-    if "logged_in" not in session:
-        return redirect(url_for("login"))
     user_id = session["user_id"]
     role = session["role"]
 
@@ -558,17 +532,15 @@ def report():
 # -------------- Экспорт CSV --------------
 
 @app.route("/export")
+@login_required
 def export_data():
-    if "logged_in" not in session:
-        return redirect(url_for("login"))
-    user_id = session["user_id"]
-    role = session["role"]
+    user_id = current_user.id
+    role = current_user.role
 
     rows = get_all_metrics(user_id, role)
     if not rows:
         return "Нет данных для экспорта."
 
-    # rows = [ (id, timestamp, cpu, ram, disk, net_rx, net_tx, users, temp), ... ]
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["id", "timestamp", "cpu", "ram", "disk", "net_rx", "net_tx", "users", "temp"])
@@ -583,13 +555,12 @@ def export_data():
     )
 
 
+
 # -------------- Динамический дашборд --------------
 
 @app.route("/dashboard_custom")
+@login_required
 def dashboard_custom():
-    if "logged_in" not in session:
-        return redirect(url_for("login"))
-
     metrics = ["cpu", "ram", "disk", "temp", "users", "rx", "tx"]
     metric_labels = {
         "cpu": "Процессор",
@@ -600,7 +571,6 @@ def dashboard_custom():
         "rx": "Сеть ↓ (RX)",
         "tx": "Сеть ↑ (TX)"
     }
-
     return render_template("dashboard_custom.html", metrics=metrics, metric_labels=metric_labels)
 
 
@@ -611,9 +581,14 @@ def on_connect():
     emit("server_event", {"data": "Добро пожаловать! WebSocket connection established."})
 
 
-@socketio.on("disconnect")
-def on_disconnect():
-    print("Client disconnected")
+@app.route("/disconnect")
+def disconnect():
+    from server_monitoring.config import connection_status
+    connection_status["active"] = False  # остановит поток
+    connection_status["status"] = "Отключено"
+    connection_status["error"] = None
+    return redirect(url_for("dashboard_custom"))
+
 
 
 # ------------ Вспомогательное -----------
@@ -627,12 +602,3 @@ def generate_2fa_code():
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template("404.html"), 404
-
-
-@app.route("/disconnect")
-def disconnect():
-    from server_monitoring.config import connection_status
-    connection_status["active"] = False  # остановит поток
-    connection_status["status"] = "Отключено"
-    connection_status["error"] = None
-    return redirect(url_for("dashboard_custom"))
