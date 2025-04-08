@@ -2,23 +2,23 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Подтверждение 2FA</title>
+    <title>2FA Проверка</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
 <div class="auth-wrapper">
     <div class="auth-box">
-        <h1>Введите код</h1>
+        <h1>Двухфакторная проверка</h1>
         {% if error %}
             <div class="error">{{ error }}</div>
         {% endif %}
-        <form method="POST">
+        <form method="post">
             <div class="input-group">
-                <input type="text" name="code" placeholder="Код из Telegram" required>
+                <input type="text" name="code" placeholder="Введите код из Telegram" required>
             </div>
             <button type="submit">✅ Подтвердить</button>
         </form>
-        <a href="{{ url_for('login') }}">Назад</a>
+        <a href="{{ url_for('login') }}">← Назад к входу</a>
     </div>
 </div>
 </body>

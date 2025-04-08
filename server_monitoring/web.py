@@ -236,7 +236,7 @@ def tg_connect():
 
     return render_template("tg_connect.html",
                            current_tg=user["telegram_username"],
-                           bot_name="@YourMonitoringBotHere")
+                           bot_name="@AllertServMonitorBot")
 
 @app.route("/twofa_verify", methods=["GET","POST"])
 def twofa_verify():

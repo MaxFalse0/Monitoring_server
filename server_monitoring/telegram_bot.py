@@ -12,6 +12,9 @@ logging.basicConfig(
 )
 
 def start_command(update: Update, context: CallbackContext):
+    if update.message.from_user.is_bot:
+        return  # Игнорируем команды от ботов
+
     chat_id = update.effective_chat.id
     text = (
         "Привет! Я бот для уведомлений о мониторинге.\n"
@@ -20,6 +23,7 @@ def start_command(update: Update, context: CallbackContext):
         "чтобы получать уведомления и использовать 2FA."
     )
     update.message.reply_text(text)
+
 
 def run_bot():
     print("Telegram bot is starting...")

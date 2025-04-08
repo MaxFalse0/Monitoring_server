@@ -4,6 +4,30 @@
     <meta charset="UTF-8">
     <title>Регистрация</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        .hint {
+            font-size: 0.9em;
+            color: var(--hint);
+            margin-top: 4px;
+        }
+        .hint.valid { color: var(--success); }
+        .hint.invalid { color: var(--danger); }
+        .input-group {
+            position: relative;
+        }
+        .toggle-icon, .generate-icon {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            right: 10px;
+            cursor: pointer;
+            font-size: 1.2em;
+            color: var(--hint);
+        }
+        .generate-icon {
+            right: 35px;
+        }
+    </style>
 </head>
 <body>
 <div class="auth-wrapper">
@@ -12,17 +36,94 @@
         {% if error %}
             <div class="error">{{ error }}</div>
         {% endif %}
-        <form method="post">
+        <form method="post" onsubmit="return validateForm()">
             <div class="input-group">
-                <input type="text" name="username" placeholder="Имя пользователя" required>
+                <input type="text" name="username" id="username" placeholder="Имя пользователя" required>
+                <div id="username-hint" class="hint"></div>
             </div>
+
             <div class="input-group">
-                <input type="password" name="password" placeholder="Пароль" required>
+                <input type="password" name="password" id="password" placeholder="Пароль" required>
+                <span class="generate-icon" onclick="generatePassword()" title="Сгенерировать пароль">⚙️</span>
+                <span class="toggle-icon" onclick="togglePassword()" title="Показать/скрыть пароль">👁</span>
+                <div id="password-hints">
+                    <div class="hint" id="p-length">Минимум 8 символов</div>
+                    <div class="hint" id="p-uppercase">Заглавная буква (A-Z)</div>
+                    <div class="hint" id="p-lowercase">Строчная буква (a-z)</div>
+                    <div class="hint" id="p-digit">Цифра (0-9)</div>
+                    <div class="hint" id="p-special">Спецсимвол (!@#$...)</div>
+                </div>
             </div>
             <button type="submit">📝 Зарегистрироваться</button>
         </form>
         <a href="{{ url_for('login') }}">Уже есть аккаунт? Войти</a>
     </div>
 </div>
+
+<script>
+    const usernameInput = document.getElementById("username");
+    const usernameHint = document.getElementById("username-hint");
+    const passwordInput = document.getElementById("password");
+
+    const checks = {
+        length: { el: document.getElementById("p-length"), valid: p => p.length >= 8 },
+        upper: { el: document.getElementById("p-uppercase"), valid: p => /[A-Z]/.test(p) },
+        lower: { el: document.getElementById("p-lowercase"), valid: p => /[a-z]/.test(p) },
+        digit: { el: document.getElementById("p-digit"), valid: p => /\d/.test(p) },
+        special: { el: document.getElementById("p-special"), valid: p => /[!@#$%^&*()_+{}\[\]:;"'<>,.?\\/-]/.test(p) }
+    };
+
+    function updateHints() {
+        const p = passwordInput.value;
+        for (const key in checks) {
+            const { el, valid } = checks[key];
+            el.className = "hint " + (valid(p) ? "valid" : "invalid");
+        }
+    }
+
+    function updateUsernameHint() {
+        const u = usernameInput.value;
+        if (u.length < 4) {
+            usernameHint.textContent = "Минимум 4 символа";
+            usernameHint.className = "hint invalid";
+        } else if (!/^[a-zA-Z0-9_]+$/.test(u)) {
+            usernameHint.textContent = "Допустимы только буквы, цифры и _";
+            usernameHint.className = "hint invalid";
+        } else {
+            usernameHint.textContent = "Имя корректно";
+            usernameHint.className = "hint valid";
+        }
+    }
+
+    function validateForm() {
+        updateHints();
+        updateUsernameHint();
+
+        const password = passwordInput.value;
+        const username = usernameInput.value;
+
+        const allValid = Object.values(checks).every(c => c.valid(password));
+        const validUsername = username.length >= 4 && /^[a-zA-Z0-9_]+$/.test(username);
+
+        return allValid && validUsername;
+    }
+
+    passwordInput.addEventListener("input", updateHints);
+    usernameInput.addEventListener("input", updateUsernameHint);
+
+    function togglePassword() {
+        passwordInput.type = passwordInput.type === "password" ? "text" : "password";
+    }
+
+    function generatePassword() {
+        const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=<>?";
+        let password = "";
+        for (let i = 0; i < 12; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        passwordInput.value = password;
+        updateHints();
+    }
+</script>
 </body>
 </html>
