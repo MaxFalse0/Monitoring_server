@@ -14,19 +14,20 @@
     </form>
 </div>
 
-<!-- Сетка для 7 метрик -->
+<!-- Сетка для 9 метрик -->
 <div class="grid-gauges">
-
-    {% set metrics_map = {
+    {% set gauges_map = {
         'cpu': 'Процессор',
         'ram': 'Оперативная память',
         'disk': 'Диск',
         'temp': 'Температура',
         'users': 'Пользователи',
+        'swap': 'Подкачка',
         'rx': 'Сеть ↓ (RX)',
-        'tx': 'Сеть ↑ (TX)'
+        'tx': 'Сеть ↑ (TX)',
+        'power': 'Энергопотребление'
     } %}
-    {% for metric, label in metrics_map.items() %}
+    {% for metric, label in gauges_map.items() %}
     <div class="gauge-box">
         <div class="gauge-container clickable"
              onclick="toggleDetails('{{ metric }}')"
@@ -38,25 +39,51 @@
         <div class="gauge-details" id="details-{{ metric }}" style="display: none;"></div>
     </div>
     {% endfor %}
+</div>
 
+<!-- Секция системной информации -->
+<div class="sys-info">
+    <h2>Системная информация</h2>
+    <div class="info-grid">
+        <div class="info-card">
+            <strong>Uptime:</strong>
+            <span id="uptime-value">--</span>
+        </div>
+        <div class="info-card">
+            <strong>Процессы:</strong>
+            <span id="processes-value">--</span>
+        </div>
+        <div class="info-card">
+            <strong>Потоки:</strong>
+            <span id="threads-value">--</span>
+        </div>
+        <div class="info-card">
+            <strong>Ошибки RX:</strong>
+            <span id="rx_err-value">--</span>
+        </div>
+        <div class="info-card">
+            <strong>Ошибки TX:</strong>
+            <span id="tx_err-value">--</span>
+        </div>
+    </div>
 </div>
 
 <p style="margin-top:20px;">Последнее обновление: <span id="last-update">--:--</span></p>
 
-<!-- Стили для крупных графиков, сетки и фиксированного положения числовых значений -->
+<!-- Стили -->
 <style>
-    /* Сетка для размещения графиков: по 3-4 карточки в ряду */
+    /* Сетка графиков: 3-4 графика в ряд */
     .grid-gauges {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
         gap: 25px;
         justify-items: center;
+        margin-bottom: 30px;
     }
     .gauge-box {
         text-align: center;
         width: 210px;
     }
-    /* Контейнер для графика (canvas) и числа */
     .gauge-container {
         position: relative;
         width: 160px;
@@ -93,6 +120,7 @@
         font-size: 0.9rem;
         color: #ddd;
         box-shadow: 0 0 5px rgba(0,0,0,0.4);
+        transition: max-height 0.3s ease, opacity 0.3s ease;
     }
     .gauge-container.clickable {
         cursor: pointer;
@@ -100,7 +128,30 @@
     }
     .gauge-container.clickable:hover {
         transform: scale(1.03);
-        box-shadow: 0 0 8px rgba(255,255,255,0.2);
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+    }
+    /* Секция системной информации */
+    .sys-info {
+        margin-top: 30px;
+    }
+    .sys-info h2 {
+        color: #ccc;
+        font-size: 1.1rem;
+        margin-bottom: 15px;
+    }
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 15px;
+    }
+    .info-card {
+        background: #2a2d33;
+        padding: 10px;
+        border-radius: 8px;
+        box-shadow: 0 0 5px rgba(0,0,0,0.4);
+        color: #ddd;
+        font-size: 0.9rem;
+        text-align: center;
     }
 </style>
 
@@ -109,32 +160,36 @@
 <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
 
 <script>
-/* Сопоставление метрики -> ID canvas */
+/* Сопоставляем метрику с ID canvas */
 const gauges = {
-  cpu: 'cpuGauge',
-  ram: 'ramGauge',
-  disk: 'diskGauge',
-  temp: 'tempGauge',
-  users: 'usersGauge',
-  rx: 'rxGauge',
-  tx: 'txGauge'
+    cpu: 'cpuGauge',
+    ram: 'ramGauge',
+    disk: 'diskGauge',
+    temp: 'tempGauge',
+    users: 'usersGauge',
+    swap: 'swapGauge',
+    rx: 'rxGauge',
+    tx: 'txGauge',
+    power: 'powerGauge'
 };
 
-/* История для расчёта средних/мин/макс значений */
+/* История для вычисления средних, минимум и максимум */
 const historyData = {
-  cpu: [],
-  ram: [],
-  disk: [],
-  temp: [],
-  users: [],
-  rx: [],
-  tx: []
+    cpu: [],
+    ram: [],
+    disk: [],
+    temp: [],
+    users: [],
+    swap: [],
+    rx: [],
+    tx: [],
+    power: []
 };
 
-/* Объекты Chart.js для каждого графика */
+/* Объекты Chart.js для каждого gauge */
 const charts = {};
 
-/* Функция создания gauge (полукруговой диаграммы) */
+/* Функция создания gauge-диаграммы */
 function createGauge(ctx) {
     return new Chart(ctx, {
         type: 'doughnut',
@@ -151,20 +206,20 @@ function createGauge(ctx) {
             rotation: 270,
             circumference: 180,
             plugins: {
-                legend: { display: false },
-                tooltip: { enabled: false }
+                legend: {display: false},
+                tooltip: {enabled: false}
             }
         }
     });
 }
 
-/* Инициализируем графики */
+/* Инициализируем все gauge */
 for (const key in gauges) {
     const ctx = document.getElementById(gauges[key]).getContext('2d');
     charts[key] = createGauge(ctx);
 }
 
-/* Форматирование скорости сети (B/s -> KB/s -> MB/s) */
+/* Форматирование скорости сети */
 function formatNetSpeed(val) {
     const b = parseFloat(val);
     if (isNaN(b) || b <= 0) return "0 B/s";
@@ -173,17 +228,17 @@ function formatNetSpeed(val) {
     return b.toFixed(0) + " B/s";
 }
 
-/* Динамическая шкала для RX и TX */
-function scaleNetDynamic(value, netArr) {
+/* Динамическая шкала для сетевых метрик (rx и tx) */
+function scaleNetDynamic(value, arr) {
     const b = parseFloat(value);
-    netArr.push(isNaN(b) ? 0 : b);
-    if (netArr.length > 50) netArr.shift();
-    const peak = Math.max(...netArr, 1);
+    arr.push(isNaN(b) ? 0 : b);
+    if (arr.length > 50) arr.shift();
+    const peak = Math.max(...arr, 1);
     const percent = Math.min((b / peak) * 100, 100);
     return [percent, 100 - percent];
 }
 
-/* Обновляем историю для мин/макс/среднего */
+/* Обновляем историю для метрики */
 function updateHistory(metric, value) {
     const arr = historyData[metric];
     arr.push(value);
@@ -199,39 +254,45 @@ function updateHistory(metric, value) {
     };
 }
 
-/* Заполняем блок деталей (среднее, мин, макс) для метрики */
+/* Заполняем блок с дополнительными данными */
 function fillDetails(metric, stats, unit='%') {
     const block = document.getElementById("details-" + metric);
     if (!block) return;
+    const avgStr = isNaN(parseFloat(stats.avg)) ? "N/A" : stats.avg + unit;
+    const minStr = isNaN(parseFloat(stats.min)) ? "N/A" : stats.min + unit;
+    const maxStr = isNaN(parseFloat(stats.max)) ? "N/A" : stats.max + unit;
     block.innerHTML = `
-        <p style="margin:4px 0;"><strong>Среднее:</strong> ${stats.avg}${unit}</p>
-        <p style="margin:4px 0;"><strong>Мин:</strong> ${stats.min}${unit}</p>
-        <p style="margin:4px 0;"><strong>Макс:</strong> ${stats.max}${unit}</p>
+        <p style="margin:4px 0;"><strong>Среднее:</strong> ${avgStr}</p>
+        <p style="margin:4px 0;"><strong>Мин:</strong> ${minStr}</p>
+        <p style="margin:4px 0;"><strong>Макс:</strong> ${maxStr}</p>
     `;
 }
 
-/* Основное обновление графиков и числовых значений */
+/* Основное обновление gauge и текстовых значений */
 function updateGauges(data) {
     if (!data) return;
 
-    // CPU, RAM, Disk — значения от 0 до 100
+    // Обновляем gauge: CPU, RAM, Disk, Temp, Users, Swap
     charts.cpu.data.datasets[0].data = [data.cpu, 100 - data.cpu];
     charts.ram.data.datasets[0].data = [data.ram, 100 - data.ram];
     charts.disk.data.datasets[0].data = [data.disk, 100 - data.disk];
 
-    // Температура — ограничим до 0..100 для визуализации
     let t = data.temp ?? 0;
     if (t < 0) t = 0;
     if (t > 100) t = 100;
     charts.temp.data.datasets[0].data = [t, 100 - t];
 
-    // Пользователи — от 0 до 100
     let u = data.users ?? 0;
     if (u < 0) u = 0;
     if (u > 100) u = 100;
     charts.users.data.datasets[0].data = [u, 100 - u];
 
-    // Сеть: используем динамическую шкалу (поля "rx" и "tx")
+    let s = data.swap ?? 0;
+    if (s < 0) s = 0;
+    if (s > 100) s = 100;
+    charts.swap.data.datasets[0].data = [s, 100 - s];
+
+    // Обновляем сеть (rx, tx) с динамической шкалой
     const rxVal = data.rx ?? 0;
     const txVal = data.tx ?? 0;
     const rxScaled = scaleNetDynamic(rxVal, historyData.rx);
@@ -239,47 +300,64 @@ function updateGauges(data) {
     charts.rx.data.datasets[0].data = rxScaled;
     charts.tx.data.datasets[0].data = txScaled;
 
+    // Энергопотребление: нормируем диапазон (например, 0..1000 W -> делим на 10)
+    let p = data.power ?? 0;
+    if (p < 0) p = 0;
+    if (p > 1000) p = 1000;
+    charts.power.data.datasets[0].data = [p / 10, 100 - (p / 10)];
+
     // Перерисовываем графики
     for (let key in charts) {
         charts[key].update();
     }
 
-    // Фиксируем текущие значения в центре
+    // Фиксируем текущие значения
     document.getElementById("cpuValue").textContent = data.cpu + "%";
     document.getElementById("ramValue").textContent = data.ram + "%";
     document.getElementById("diskValue").textContent = data.disk + "%";
     document.getElementById("tempValue").textContent = (data.temp && data.temp > 0) ? data.temp + "°C" : "N/A";
     document.getElementById("usersValue").textContent = data.users;
+    document.getElementById("swapValue").textContent = data.swap + "%";
     document.getElementById("rxValue").textContent = formatNetSpeed(rxVal);
     document.getElementById("txValue").textContent = formatNetSpeed(txVal);
+    document.getElementById("powerValue").textContent = data.power + " W";
 
-    // Обновляем историю для каждой метрики
-    const cpuStats  = updateHistory('cpu', data.cpu);
-    const ramStats  = updateHistory('ram', data.ram);
+    // Обновляем историю и детали для каждой метрики
+    const cpuStats = updateHistory('cpu', data.cpu);
+    const ramStats = updateHistory('ram', data.ram);
     const diskStats = updateHistory('disk', data.disk);
     const tempStats = updateHistory('temp', data.temp ?? 0);
     const userStats = updateHistory('users', data.users ?? 0);
-    const rxStats   = updateHistory('rx', rxVal);
-    const txStats   = updateHistory('tx', txVal);
+    const swapStats = updateHistory('swap', data.swap ?? 0);
+    const rxStats = updateHistory('rx', rxVal);
+    const txStats = updateHistory('tx', txVal);
+    const powerStats = updateHistory('power', data.power ?? 0);
 
-    // Заполняем дополнительные данные для кликабельных блоков
-    fillDetails('cpu',  cpuStats);
-    fillDetails('ram',  ramStats);
+    fillDetails('cpu', cpuStats);
+    fillDetails('ram', ramStats);
     fillDetails('disk', diskStats);
     fillDetails('temp', tempStats, '°C');
     fillDetails('users', userStats, '');
-    fillDetails('rx',   rxStats, ' B/s');
-    fillDetails('tx',   txStats, ' B/s');
+    fillDetails('swap', swapStats, '%');
+    fillDetails('rx', rxStats, ' B/s');
+    fillDetails('tx', txStats, ' B/s');
+    fillDetails('power', powerStats, ' W');
 
     // Обновляем время последнего обновления
     document.getElementById("last-update").textContent = new Date().toLocaleTimeString();
+
+    // Обновляем системную информацию
+    document.getElementById("uptime-value").textContent = data.uptime;
+    document.getElementById("processes-value").textContent = data.processes;
+    document.getElementById("threads-value").textContent = data.threads;
+    document.getElementById("rx_err-value").textContent = data.rx_err;
+    document.getElementById("tx_err-value").textContent = data.tx_err;
 }
 
 /* Обновляем статус подключения */
 function updateConnectionStatus(statusData) {
     const connStatus = document.getElementById("conn-status");
     const disconnectBtn = document.getElementById("disconnect-btn");
-
     if (!statusData || !statusData.status || !statusData.active || statusData.status.includes("Ошибка")) {
         connStatus.textContent = "Не подключено";
         connStatus.style.color = "var(--danger)";
@@ -291,7 +369,7 @@ function updateConnectionStatus(statusData) {
     }
 }
 
-/* Опрос /data каждые 3 секунды */
+/* Периодический опрос /data */
 function fetchStatus() {
     fetch("/data")
         .then(res => res.json())
@@ -303,11 +381,11 @@ function fetchStatus() {
 setInterval(fetchStatus, 3000);
 fetchStatus();
 
-/* Socket.IO для прямой передачи метрик (если используется) */
+/* Socket.IO для обновлений в реальном времени */
 const socket = io();
 socket.on("new_metrics", (data) => updateGauges(data));
 
-/* Функция для переключения отображения дополнительного блока */
+/* Переключение отображения дополнительных данных при клике */
 function toggleDetails(metric) {
     const block = document.getElementById("details-" + metric);
     if (!block) return;

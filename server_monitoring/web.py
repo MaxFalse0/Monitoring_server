@@ -177,6 +177,54 @@ def get_user_servers():
     return servers
 
 
+# @app.route("/data")
+# def get_data():
+#     user_id = session["user_id"]
+#     user_role = session["role"]
+#     latest = database.get_latest_metrics(user_id, user_role)
+#
+#     if not latest:
+#         return jsonify({"metrics": {}, "status": connection_status})
+#
+#     metrics = {
+#         "cpu": latest["cpu"],
+#         "cpu_avg": latest.get("cpu_avg", latest["cpu"]),
+#         "cpu_min": latest.get("cpu_min", latest["cpu"]),
+#         "cpu_max": latest.get("cpu_max", latest["cpu"]),
+#
+#         "ram": latest["ram"],
+#         "ram_avg": latest.get("ram_avg", latest["ram"]),
+#         "ram_min": latest.get("ram_min", latest["ram"]),
+#         "ram_max": latest.get("ram_max", latest["ram"]),
+#
+#         "disk": latest["disk"],
+#         "disk_avg": latest.get("disk_avg", latest["disk"]),
+#         "disk_min": latest.get("disk_min", latest["disk"]),
+#         "disk_max": latest.get("disk_max", latest["disk"]),
+#
+#         "temp": latest["temp"],
+#         "temp_avg": latest.get("temp_avg", latest["temp"]),
+#         "temp_min": latest.get("temp_min", latest["temp"]),
+#         "temp_max": latest.get("temp_max", latest["temp"]),
+#
+#         "users": latest["users"],
+#         "users_avg": latest.get("users_avg", latest["users"]),
+#         "users_min": latest.get("users_min", latest["users"]),
+#         "users_max": latest.get("users_max", latest["users"]),
+#
+#         # 👇 ДОБАВЛЯЕМ СЕТЬ
+#         "rx": latest["net_rx"],
+#         "tx": latest["net_tx"],
+#         "rx_avg": latest.get("rx_avg", latest["net_rx"]),
+#         "rx_min": latest.get("rx_min", latest["net_rx"]),
+#         "rx_max": latest.get("rx_max", latest["net_rx"]),
+#
+#         "tx_avg": latest.get("tx_avg", latest["net_tx"]),
+#         "tx_min": latest.get("tx_min", latest["net_tx"]),
+#         "tx_max": latest.get("tx_max", latest["net_tx"]),
+#     }
+#
+#     return jsonify({"metrics": metrics, "status": connection_status})
 @app.route("/data")
 def get_data():
     user_id = session["user_id"]
@@ -188,40 +236,19 @@ def get_data():
 
     metrics = {
         "cpu": latest["cpu"],
-        "cpu_avg": latest.get("cpu_avg", latest["cpu"]),
-        "cpu_min": latest.get("cpu_min", latest["cpu"]),
-        "cpu_max": latest.get("cpu_max", latest["cpu"]),
-
         "ram": latest["ram"],
-        "ram_avg": latest.get("ram_avg", latest["ram"]),
-        "ram_min": latest.get("ram_min", latest["ram"]),
-        "ram_max": latest.get("ram_max", latest["ram"]),
-
         "disk": latest["disk"],
-        "disk_avg": latest.get("disk_avg", latest["disk"]),
-        "disk_min": latest.get("disk_min", latest["disk"]),
-        "disk_max": latest.get("disk_max", latest["disk"]),
-
-        "temp": latest["temp"],
-        "temp_avg": latest.get("temp_avg", latest["temp"]),
-        "temp_min": latest.get("temp_min", latest["temp"]),
-        "temp_max": latest.get("temp_max", latest["temp"]),
-
-        "users": latest["users"],
-        "users_avg": latest.get("users_avg", latest["users"]),
-        "users_min": latest.get("users_min", latest["users"]),
-        "users_max": latest.get("users_max", latest["users"]),
-
-        # 👇 ДОБАВЛЯЕМ СЕТЬ
         "rx": latest["net_rx"],
         "tx": latest["net_tx"],
-        "rx_avg": latest.get("rx_avg", latest["net_rx"]),
-        "rx_min": latest.get("rx_min", latest["net_rx"]),
-        "rx_max": latest.get("rx_max", latest["net_rx"]),
-
-        "tx_avg": latest.get("tx_avg", latest["net_tx"]),
-        "tx_min": latest.get("tx_min", latest["net_tx"]),
-        "tx_max": latest.get("tx_max", latest["net_tx"]),
+        "users": latest["users"],
+        "temp": latest["temp"],
+        "swap": latest["swap"],
+        "uptime": latest["uptime"],
+        "processes": latest["processes"],
+        "threads": latest["threads"],
+        "rx_err": latest["rx_err"],
+        "tx_err": latest["tx_err"],
+        "power": latest["power"]
     }
 
     return jsonify({"metrics": metrics, "status": connection_status})
