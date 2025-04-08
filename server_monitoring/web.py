@@ -5,7 +5,7 @@ import io
 import threading
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 from flask_socketio import SocketIO, emit
-
+import time
 from server_monitoring.collect import collect_metrics
 from server_monitoring.auth import login_user, register_user
 from server_monitoring import database
@@ -24,8 +24,8 @@ socketio.init_app(app, cors_allowed_origins="*")  # или SOCKETIO_CORS_ALLOWED
 @app.before_request
 def check_session():
     allowed_routes = (
-        "login", "register", "twofa_verify",
-        "static", "export_data",  # export_data пусть тоже проверяется => либо убираем
+        "login", "register", "twofa_verify", "resend_code",
+        "static", "export_data",
         "socketio_test", "socketio_test_emit"
     )
     # Если не авторизован => уходим на login
@@ -61,6 +61,7 @@ def login():
             if user["twofa_enabled"] == 1 and user["telegram_username"]:
                 code = generate_2fa_code()
                 session["twofa_code"] = code
+                session["twofa_timestamp"] = time.time()  # импортируй time сверху
                 session["partial_login"] = True
                 session["user_id"] = user["id"]
                 send_telegram_alert(user["telegram_username"], f"Ваш код для входа: {code}")
@@ -220,42 +221,96 @@ def get_data():
 
 # -------------- Telegram, 2FA --------------
 
-@app.route("/tg_connect", methods=["GET","POST"])
+@app.route("/tg_connect", methods=["GET", "POST"])
 def tg_connect():
     if "logged_in" not in session:
         return redirect(url_for("login"))
+
     user_id = session["user_id"]
     user = get_user_by_id(user_id)
+    if not user:
+        return redirect(url_for("logout"))
 
-    if request.method=="POST":
+    if request.method == "POST":
         new_tg = request.form["telegram_username"].strip()
+
+        # ✅ Жёсткая проверка — только цифры (chat_id)
+        if not new_tg.isdigit():
+            return render_template("tg_connect.html", current_tg=user["telegram_username"],
+                                   error="Введите только числовой Telegram ID (chat_id).")
+
+        # Сохраняем
         database.update_user_telegram(user_id, new_tg)
         session["telegram_username"] = new_tg
-        send_telegram_alert(new_tg, "Вы успешно подключили бота!")
+
+        # Пробуем отправить тестовое сообщение
+        send_telegram_alert(new_tg, "✅ Вы успешно подключили Telegram-бота!")
         return redirect(url_for("tg_connect"))
 
     return render_template("tg_connect.html",
                            current_tg=user["telegram_username"],
-                           bot_name="@AllertServMonitorBot")
+                           bot_name="@AllertServMonitorBot",
+                           error=None)
 
-@app.route("/twofa_verify", methods=["GET","POST"])
+
+@app.route("/twofa_verify", methods=["GET", "POST"])
 def twofa_verify():
+    import time
+
     if "partial_login" not in session:
         return redirect(url_for("login"))
-    if request.method=="POST":
-        code = request.form["code"].strip()
-        if code == session.get("twofa_code"):
+
+    error = None
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        current_time = time.time()
+        code_time = session.get("twofa_timestamp")
+
+        if not code_time or current_time - code_time > 60:
+            error = "Код истёк. Пожалуйста, запросите новый."
+        elif code != session.get("twofa_code"):
+            error = "Неверный код"
+        else:
+            # Успешная авторизация
             user_id = session["user_id"]
             user = get_user_by_id(user_id)
             session["logged_in"] = True
             session.pop("partial_login", None)
             session.pop("twofa_code", None)
+            session.pop("twofa_timestamp", None)
             session["telegram_username"] = user["telegram_username"]
             session["role"] = user["role"]
             return redirect(url_for("dashboard"))
-        else:
-            return render_template("twofa_verify.html", error="Неверный код")
-    return render_template("twofa_verify.html", error=None)
+
+    # Вычисляем оставшееся время
+    remaining = 0
+    if "twofa_timestamp" in session:
+        elapsed = time.time() - session["twofa_timestamp"]
+        remaining = max(0, int(60 - elapsed))
+
+    return render_template("twofa_verify.html", error=error, remaining=remaining)
+
+
+@app.route("/resend_code")
+def resend_code():
+    import time
+    from server_monitoring.analyze import send_telegram_alert
+
+    if "partial_login" not in session:
+        return jsonify({"status": "error", "message": "Сессия истекла"})
+
+    code = generate_2fa_code()
+    session["twofa_code"] = code
+    session["twofa_timestamp"] = time.time()
+
+    user = get_user_by_id(session["user_id"])
+    if user and user["telegram_username"]:
+        send_telegram_alert(user["telegram_username"], f"Ваш новый код для входа: {code}")
+        return jsonify({"status": "ok"})
+    return jsonify({"status": "error", "message": "Нет Telegram-профиля"})
+
+
 
 @app.route("/twofa_setup", methods=["GET","POST"])
 def twofa_setup():
@@ -357,62 +412,71 @@ def servers_delete(server_id):
 def report():
     if "logged_in" not in session:
         return redirect(url_for("login"))
+
     user_id = session["user_id"]
     role = session["role"]
 
-    days = request.args.get("days","1")
+    days = request.args.get("days", "1")
     try:
         days = int(days)
     except:
         days = 1
+
     rows = get_metrics_for_period(user_id, role, days)
     if not rows:
         return f"Нет данных за последние {days} дн."
 
-    # rows = [ (cpu, ram, disk, users, temp, timestamp), ... ]
-    cpus   = [r[0] for r in rows]
-    rams   = [r[1] for r in rows]
-    disks  = [r[2] for r in rows]
-    users_ = [r[3] for r in rows]
-    temps  = [r[4] for r in rows]
-    net_rxs = [r[5] for r in rows]
-    net_txs = [r[6] for r in rows]
+    # rows = [ (cpu, ram, disk, users, temp, rx, tx, timestamp), ... ]
+    cpus    = [r[0] for r in rows if r[0] is not None]
+    rams    = [r[1] for r in rows if r[1] is not None]
+    disks   = [r[2] for r in rows if r[2] is not None]
+    users_  = [r[3] for r in rows if r[3] is not None]
+    temps   = [r[4] for r in rows if r[4] is not None]
+    net_rxs = [r[5] for r in rows if r[5] is not None]
+    net_txs = [r[6] for r in rows if r[6] is not None]
 
-    net_rx_min, net_rx_max = min(net_rxs), max(net_rxs)
-    net_rx_avg = sum(net_rxs) / len(net_rxs)
+    # Защищённые расчёты
+    cpu_min = min(cpus) if cpus else None
+    cpu_max = max(cpus) if cpus else None
+    cpu_avg = sum(cpus)/len(cpus) if cpus else None
 
-    net_tx_min, net_tx_max = min(net_txs), max(net_txs)
-    net_tx_avg = sum(net_txs) / len(net_txs)
+    ram_min = min(rams) if rams else None
+    ram_max = max(rams) if rams else None
+    ram_avg = sum(rams)/len(rams) if rams else None
 
-    cpu_min, cpu_max = min(cpus), max(cpus)
-    cpu_avg = sum(cpus)/len(cpus)
+    disk_min = min(disks) if disks else None
+    disk_max = max(disks) if disks else None
+    disk_avg = sum(disks)/len(disks) if disks else None
 
-    ram_min, ram_max = min(rams), max(rams)
-    ram_avg = sum(rams)/len(rams)
+    users_min = min(users_) if users_ else None
+    users_max = max(users_) if users_ else None
+    users_avg = sum(users_)/len(users_) if users_ else None
 
-    disk_min, disk_max = min(disks), max(disks)
-    disk_avg = sum(disks)/len(disks)
+    temp_min = min(temps) if temps else None
+    temp_max = max(temps) if temps else None
+    temp_avg = sum(temps)/len(temps) if temps else None
 
-    users_min, users_max = min(users_), max(users_)
-    users_avg = sum(users_)/len(users_)
+    net_rx_min = min(net_rxs) if net_rxs else 0
+    net_rx_max = max(net_rxs) if net_rxs else 0
+    net_rx_avg = sum(net_rxs)/len(net_rxs) if net_rxs else 0
 
-    temp_min, temp_max = min(temps), max(temps)
-    temp_avg = sum(temps)/len(temps)
+    net_tx_min = min(net_txs) if net_txs else 0
+    net_tx_max = max(net_txs) if net_txs else 0
+    net_tx_avg = sum(net_txs)/len(net_txs) if net_txs else 0
 
     return render_template("report.html",
-                           days=days,
-                           cpu_min=cpu_min, cpu_max=cpu_max, cpu_avg=cpu_avg,
-                           ram_min=ram_min, ram_max=ram_max, ram_avg=ram_avg,
-                           disk_min=disk_min, disk_max=disk_max, disk_avg=disk_avg,
-                           users_min=users_min, users_max=users_max, users_avg=users_avg,
-                           temp_min=temp_min, temp_max=temp_max, temp_avg=temp_avg,
-                           net_rx_min = net_rx_min / 1024 / 1024,
-                           net_rx_max = net_rx_max / 1024 / 1024,
-                           net_rx_avg = net_rx_avg / 1024 / 1024,
-                           net_tx_min = net_tx_min / 1024 / 1024,
-                           net_tx_max = net_tx_max / 1024 / 1024,
-                           net_tx_avg = net_tx_avg / 1024 / 1024
-
+        days=days,
+        cpu_min=cpu_min, cpu_max=cpu_max, cpu_avg=cpu_avg,
+        ram_min=ram_min, ram_max=ram_max, ram_avg=ram_avg,
+        disk_min=disk_min, disk_max=disk_max, disk_avg=disk_avg,
+        users_min=users_min, users_max=users_max, users_avg=users_avg,
+        temp_min=temp_min, temp_max=temp_max, temp_avg=temp_avg,
+        net_rx_min=net_rx_min / 1024 / 1024,
+        net_rx_max=net_rx_max / 1024 / 1024,
+        net_rx_avg=net_rx_avg / 1024 / 1024,
+        net_tx_min=net_tx_min / 1024 / 1024,
+        net_tx_max=net_tx_max / 1024 / 1024,
+        net_tx_avg=net_tx_avg / 1024 / 1024
     )
 
 # -------------- Экспорт CSV --------------

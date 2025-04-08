@@ -4,22 +4,105 @@
     <meta charset="UTF-8">
     <title>2FA Проверка</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        .hint { color: var(--hint); font-size: 0.9em; margin-top: 8px; }
+        .resend-btn {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: var(--primary);
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: 0.3s ease;
+        }
+        .resend-btn.disabled {
+            background: gray;
+            cursor: not-allowed;
+        }
+    </style>
 </head>
 <body>
 <div class="auth-wrapper">
     <div class="auth-box">
         <h1>Двухфакторная проверка</h1>
+
         {% if error %}
             <div class="error">{{ error }}</div>
         {% endif %}
+
         <form method="post">
             <div class="input-group">
-                <input type="text" name="code" placeholder="Введите код из Telegram" required>
+                <input type="text" name="code" id="code" placeholder="Введите код из Telegram" required>
             </div>
             <button type="submit">✅ Подтвердить</button>
         </form>
-        <a href="{{ url_for('login') }}">← Назад к входу</a>
+
+        <div class="hint">
+            Код отправлен в Telegram. <span id="timer">Ожидайте...</span>
+        </div>
+       <button id="resend-btn" type="button" class="resend-btn disabled" disabled>🔁 Отправить код повторно</button>
+
+        <a href="{{ url_for('login') }}" style="display:block;margin-top:15px;">← Назад к входу</a>
     </div>
 </div>
+
+<script>
+    document.getElementById("code").focus();
+
+    let seconds = {{ remaining or 0 }};
+    const timerSpan = document.getElementById("timer");
+    const resendBtn = document.getElementById("resend-btn");
+
+    function startTimer() {
+        if (seconds > 0) {
+            resendBtn.disabled = true;
+            resendBtn.classList.add("disabled");
+            updateTimerText();
+
+            const countdown = setInterval(() => {
+                seconds--;
+                updateTimerText();
+
+                if (seconds <= 0) {
+                    clearInterval(countdown);
+                    resendBtn.disabled = false;
+                    resendBtn.classList.remove("disabled");
+                    timerSpan.textContent = "Вы можете запросить новый код.";
+                }
+            }, 1000);
+        } else {
+            timerSpan.textContent = "Вы можете запросить новый код.";
+            resendBtn.disabled = false;
+            resendBtn.classList.remove("disabled");
+        }
+    }
+
+    function updateTimerText() {
+        timerSpan.textContent = `Ожидайте ${seconds} сек.`;
+    }
+
+    resendBtn.addEventListener("click", () => {
+    resendBtn.disabled = true;
+    resendBtn.classList.add("disabled");
+
+    fetch("/resend_code")
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === "ok") {
+                seconds = 60;
+                startTimer();
+            } else {
+                alert("Ошибка при повторной отправке кода: " + (data.message || "Неизвестно"));
+            }
+        })
+        .catch(error => {
+            alert("Сетевая ошибка: " + error);
+        });
+});
+
+
+    startTimer();
+</script>
 </body>
 </html>

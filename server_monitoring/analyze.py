@@ -1,10 +1,14 @@
 import requests
 import paramiko
 from server_monitoring.config import THRESHOLDS, TELEGRAM_BOT_TOKEN, AUTOHEAL_CPU
+import os
+import json
+
 
 # Дополнительные пороги
 USER_THRESHOLD = 50
 TEMP_THRESHOLD = 75
+
 
 def check_alerts(cpu, ram, disk, telegram_username=None, users=None, temp=None):
     alerts = []
@@ -27,20 +31,64 @@ def check_alerts(cpu, ram, disk, telegram_username=None, users=None, temp=None):
         msg = "\n".join(alerts)
         send_telegram_alert(telegram_username, msg)
 
-def send_telegram_alert(user_telegram_username, message):
+MAP_PATH = "user_map.json"
+
+# def send_telegram_alert(user, message):
+#     # Если это уже chat_id (число), отправляем напрямую
+#     try:
+#         chat_id = int(user)
+#     except ValueError:
+#         # иначе ищем username → chat_id
+#         username = user.lower().lstrip("@")
+#         chat_id = None
+#         if os.path.exists(MAP_PATH):
+#             with open(MAP_PATH, "r", encoding="utf-8") as f:
+#                 user_map = json.load(f)
+#                 chat_id = user_map.get(username)
+#         if not chat_id:
+#             print(f"[Telegram] Неизвестный username: {username}")
+#             return
+#
+#     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+#     payload = {"chat_id": chat_id, "text": message}
+#     try:
+#         resp = requests.post(url, json=payload, timeout=10)
+#         if resp.status_code == 200:
+#             print(f"[Telegram] Сообщение отправлено → {chat_id}")
+#         else:
+#             print(f"[Telegram] Ошибка: {resp.text}")
+#     except Exception as e:
+#         print(f"[Telegram] Сбой отправки: {e}")
+
+
+def send_telegram_alert(user, message):
+    print(f"[DEBUG] Пытаюсь отправить сообщение: {message} → {user}")
+
     try:
-        chat_id = int(user_telegram_username)
+        # Если это ID (число)
+        chat_id = int(user)
+        print(f"[DEBUG] Используем как chat_id: {chat_id}")
     except ValueError:
-        print("Telegram username не является числом (chat_id).")
-        return
+        # Обрабатываем username
+        username = str(user).strip().lstrip("@").lower()
+        print(f"[DEBUG] Обрабатываем username: {username}")
+        chat_id = None
+        if os.path.exists(MAP_PATH):
+            with open(MAP_PATH, "r", encoding="utf-8") as f:
+                user_map = json.load(f)
+                chat_id = user_map.get(username)
+                print(f"[DEBUG] Найден chat_id: {chat_id}")
+        if not chat_id:
+            print(f"[Telegram] ❌ Неизвестный Telegram username: {username}")
+            return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": message}
     try:
         resp = requests.post(url, json=payload, timeout=10)
         if resp.status_code == 200:
-            print(f"Telegram-сообщение отправлено (chat_id={chat_id}).")
+            print(f"[Telegram] ✅ Сообщение отправлено: {chat_id}")
         else:
-            print(f"Ошибка при отправке Telegram: {resp.text}")
+            print(f"[Telegram] ❌ Ошибка Telegram: {resp.text}")
     except Exception as e:
-        print(f"Ошибка при запросе к Telegram: {e}")
+        print(f"[Telegram] ❌ Сбой отправки: {e}")

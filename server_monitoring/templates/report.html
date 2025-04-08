@@ -8,7 +8,15 @@
     <p><strong>CPU:</strong> {{ cpu_avg|round(2) }}% (мин: {{ cpu_min|round(2) }}%, макс: {{ cpu_max|round(2) }}%)</p>
     <p><strong>RAM:</strong> {{ ram_avg|round(2) }}% (мин: {{ ram_min|round(2) }}%, макс: {{ ram_max|round(2) }}%)</p>
     <p><strong>Disk:</strong> {{ disk_avg|round(2) }}% (мин: {{ disk_min|round(2) }}%, макс: {{ disk_max|round(2) }}%)</p>
-    <p><strong>Температура:</strong> {{ temp_avg|round(1) }}°C (мин: {{ temp_min|round(1) }}°C, макс: {{ temp_max|round(1) }}°C)</p>
+    <p><strong>Температура:</strong>
+    {% if temp_avg is not none %}
+        {{ temp_avg|round(1) }}°C
+        (мин: {{ temp_min|round(1) }}°C, макс: {{ temp_max|round(1) }}°C)
+    {% else %}
+        нет данных
+    {% endif %}
+</p>
+
     <p><strong>Пользователи:</strong> {{ users_avg|round(0) }} (мин: {{ users_min }}, макс: {{ users_max }})</p>
     <p><strong>Net RX:</strong> {{ net_rx_avg|round(2) }} MB (мин: {{ net_rx_min|round(2) }} MB, макс: {{ net_rx_max|round(2) }} MB)</p>
     <p><strong>Net TX:</strong> {{ net_tx_avg|round(2) }} MB (мин: {{ net_tx_min|round(2) }} MB, макс: {{ net_tx_max|round(2) }} MB)</p>

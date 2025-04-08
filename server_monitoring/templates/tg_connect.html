@@ -1,32 +1,111 @@
-{% extends "base.html" %}
-{% block title %}Telegram{% endblock %}
-{% block content %}
-<h1 class="page-title">🔗 Привязка Telegram</h1>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Привязка Telegram</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        .form-block {
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 30px;
+            background-color: #1e1f23;
+            border-radius: 20px;
+            box-shadow: 0 0 15px #00000050;
+        }
+        .form-block h2 {
+            margin-bottom: 15px;
+            font-size: 1.6rem;
+            color: #fff;
+        }
+        .form-block .current {
+            margin-bottom: 15px;
+            color: #aaa;
+        }
+        .form-block .current strong {
+            color: #fff;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            background-color: #2c2e33;
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1rem;
+        }
+        .input-group input::placeholder {
+            color: #777;
+        }
+        .form-hint {
+            margin-top: 8px;
+            font-size: 0.9rem;
+            color: #777;
+        }
+        .form-hint b {
+            color: #bbb;
+        }
+        .error {
+            color: #ff5e5e;
+            background: #2a1f1f;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .btn {
+            display: block;
+            margin-top: 20px;
+            padding: 12px;
+            width: 100%;
+            background: #6e7191;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.3s ease;
+        }
+        .btn:hover {
+            background: #888bb0;
+        }
+        .back-link {
+            display: block;
+            margin-top: 20px;
+            text-align: center;
+            font-size: 0.95rem;
+            color: #999;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+<div class="form-block">
+    <h2>Привязка Telegram</h2>
 
-<div class="connect-form island" style="max-width: 450px;">
-    {% if current_tg %}
-        <p>Ваш Telegram уже привязан: <strong>@{{ current_tg }}</strong></p>
-    {% else %}
-        <p>Telegram ещё не привязан к аккаунту.</p>
+    {% if current_tg and current_tg.isdigit() and current_tg|length >= 6 %}
+    <div class="current">✅ Telegram привязан: <strong>{{ current_tg }}</strong></div>
+    {% elif current_tg %}
+    <div class="error">⚠️ Текущий chat_id "{{ current_tg }}" некорректен. Пожалуйста, введите правильный ID.</div>
     {% endif %}
 
-    <form method="POST">
-        <div class="input-group">
-            <input type="text" name="telegram_username" placeholder="Введите ваш username (без @)" required>
-        </div>
-        <button type="submit">📲 Привязать Telegram</button>
-    </form>
-</div>
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
 
-<div class="connect-form island" style="margin-top: 30px; max-width: 500px;">
-    <h2>Как подключиться к боту?</h2>
-    <ol style="line-height: 1.8;">
-        <li>Откройте Telegram и найдите бота: <strong>{{ bot_name }}</strong></li>
-        <li>Нажмите <code>/start</code> или кнопку Start</li>
-        <li>Бот пришлёт вам <strong>chat_id</strong></li>
-        <li>Вставьте его в форму выше</li>
-        <li>Готово — вы получите уведомления и сможете включить 2FA</li>
-    </ol>
-    <p style="margin-top:10px;color:var(--primary);"><strong>Важно:</strong> Убедитесь, что чат с ботом открыт и уведомления разрешены.</p>
+    <form method="post">
+        <div class="input-group">
+            <input type="text" name="telegram_username" placeholder="Введите ваш chat_id" required>
+        </div>
+        <div class="form-hint">
+            Где взять <b>chat_id</b>? Напишите <code>/start</code> боту <b>{{ bot_name }}</b> и скопируйте ID из сообщения.
+        </div>
+        <button type="submit" class="btn">📲 Привязать Telegram</button>
+    </form>
+
+    <a href="{{ url_for('dashboard') }}" class="back-link">← Назад к панели</a>
 </div>
-{% endblock %}
+</body>
+</html>
