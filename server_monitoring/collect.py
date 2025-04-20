@@ -3,6 +3,8 @@ import time
 from .config import REMOTE_TEMP_SCRIPT
 from .database import save_metrics
 import os
+from server_monitoring.analyze import check_alerts
+
 
 def get_net_bytes(client):
     cmd = """
@@ -213,6 +215,15 @@ def collect_metrics(server_ip, port, ssh_user, ssh_password, status_dict, tg_use
                 rx_err=metrics["rx_err"],
                 tx_err=metrics["tx_err"],
                 power=metrics["power"]
+            )
+            
+            check_alerts(
+                cpu=metrics["cpu"],
+                ram=metrics["ram"],
+                disk=metrics["disk"],
+                telegram_username=tg_username,
+                users=metrics["users"],
+                temp=metrics["temp"]
             )
 
             status_dict["status"] = "Сервер подключён и данные собираются"
