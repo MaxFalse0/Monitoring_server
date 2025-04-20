@@ -33,40 +33,11 @@ def check_alerts(cpu, ram, disk, telegram_username=None, users=None, temp=None):
 
 MAP_PATH = "user_map.json"
 
-# def send_telegram_alert(user, message):
-#     # Если это уже chat_id (число), отправляем напрямую
-#     try:
-#         chat_id = int(user)
-#     except ValueError:
-#         # иначе ищем username → chat_id
-#         username = user.lower().lstrip("@")
-#         chat_id = None
-#         if os.path.exists(MAP_PATH):
-#             with open(MAP_PATH, "r", encoding="utf-8") as f:
-#                 user_map = json.load(f)
-#                 chat_id = user_map.get(username)
-#         if not chat_id:
-#             print(f"[Telegram] Неизвестный username: {username}")
-#             return
-#
-#     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-#     payload = {"chat_id": chat_id, "text": message}
-#     try:
-#         resp = requests.post(url, json=payload, timeout=10)
-#         if resp.status_code == 200:
-#             print(f"[Telegram] Сообщение отправлено → {chat_id}")
-#         else:
-#             print(f"[Telegram] Ошибка: {resp.text}")
-#     except Exception as e:
-#         print(f"[Telegram] Сбой отправки: {e}")
-
-
 def send_telegram_alert(user, message):
     print(f"[DEBUG] Пытаюсь отправить сообщение: {message} → {user}")
 
     try:
-        # Если это ID (число)
-        chat_id = int(user)
+        chat_id = int(user)  # Пробуем как ID
         print(f"[DEBUG] Используем как chat_id: {chat_id}")
     except ValueError:
         # Обрабатываем username
