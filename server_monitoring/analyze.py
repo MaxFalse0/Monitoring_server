@@ -10,26 +10,41 @@ USER_THRESHOLD = 50
 TEMP_THRESHOLD = 75
 
 
-def check_alerts(cpu, ram, disk, telegram_username=None, users=None, temp=None):
+def check_alerts(cpu, ram, disk, telegram_username=None, users=None, temp=None, server_ip=None):
     alerts = []
     if cpu > THRESHOLDS["cpu"]:
-        alerts.append(f"Высокая загрузка CPU: {cpu:.1f}%")
+        msg = f"Высокая загрузка CPU: {cpu:.1f}%"
+        if server_ip:
+            msg += f" на сервере {server_ip}"
+        alerts.append(msg)
     if ram > THRESHOLDS["ram"]:
-        alerts.append(f"Высокая загрузка RAM: {ram:.1f}%")
+        msg = f"Высокая загрузка RAM: {ram:.1f}%"
+        if server_ip:
+            msg += f" на сервере {server_ip}"
+        alerts.append(msg)
     if disk > THRESHOLDS["disk"]:
-        alerts.append(f"Мало места на диске: {disk:.1f}% занято")
+        msg = f"Мало места на диске: {disk:.1f}% занято"
+        if server_ip:
+            msg += f" на сервере {server_ip}"
+        alerts.append(msg)
     if users is not None and users > USER_THRESHOLD:
-        alerts.append(f"Много пользователей в системе: {users}")
+        msg = f"Много пользователей в системе: {users}"
+        if server_ip:
+            msg += f" на сервере {server_ip}"
+        alerts.append(msg)
     if temp is not None and temp > TEMP_THRESHOLD:
-        alerts.append(f"Высокая температура: {temp:.1f}°C")
+        msg = f"Высокая температура: {temp:.1f}°C"
+        if server_ip:
+            msg += f" на сервере {server_ip}"
+        alerts.append(msg)
 
-    # Автолечение (демо)
     if cpu > AUTOHEAL_CPU:
         print("Auto-healing triggered: CPU>95%. Demo - restart service or something...")
 
     if alerts and telegram_username:
-        msg = "\n".join(alerts)
-        send_telegram_alert(telegram_username, msg)
+        message = "\n".join(alerts)
+        send_telegram_alert(telegram_username, message)
+
 
 MAP_PATH = "user_map.json"
 
