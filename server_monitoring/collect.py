@@ -30,6 +30,7 @@ def get_net_bytes(client):
         print(f"[NET ERROR] {e}")
     return 0.0, 0.0
 
+
 def get_temp(client):
     try:
         sftp = client.open_sftp()
@@ -49,6 +50,7 @@ def get_temp(client):
         print(f"[TEMP ERROR] {e}")
         return None
 
+
 def get_swap_usage(client):
     try:
         # Команда вычисляет процент использования swap
@@ -62,6 +64,7 @@ def get_swap_usage(client):
     except Exception as e:
         print(f"[SWAP ERROR] {e}")
         return 0.0
+
 
 def get_uptime(client):
     try:
@@ -80,6 +83,7 @@ def get_uptime(client):
         print(f"[UPTIME ERROR] {e}")
         return "N/A"
 
+
 def get_proc_thread_counts(client):
     try:
         stdin, stdout, stderr = client.exec_command("ps -e | wc -l")
@@ -95,6 +99,7 @@ def get_proc_thread_counts(client):
         print(f"[PROC/THREAD ERROR] {e}")
         return 0, 0
 
+
 def get_power_consumption(client):
     try:
         # Попытка получить энергопотребление через ipmitool
@@ -108,6 +113,7 @@ def get_power_consumption(client):
     except Exception as e:
         print(f"[POWER ERROR] {e}")
         return 0.0
+
 
 def get_interface_errors(client):
     try:
@@ -134,6 +140,7 @@ END {
     except Exception as e:
         print(f"[IFACE ERROR] {e}")
         return 0.0, 0.0
+
 
 def collect_metrics(server_ip, port, ssh_user, ssh_password, status_dict, tg_username, user_id):
     try:
@@ -216,7 +223,7 @@ def collect_metrics(server_ip, port, ssh_user, ssh_password, status_dict, tg_use
                 tx_err=metrics["tx_err"],
                 power=metrics["power"]
             )
-            
+
             check_alerts(
                 cpu=metrics["cpu"],
                 ram=metrics["ram"],
