@@ -42,7 +42,8 @@ if not os.path.exists("app.log"):
     with open("app.log", "w", encoding="utf-8") as f:
         f.write("")
 
-file_handler = RotatingFileHandler("app.log", maxBytes=100000, backupCount=10)
+file_handler = RotatingFileHandler("app.log", maxBytes=100000, backupCount=10, encoding="utf-8")
+
 file_handler.setLevel(logging.INFO)
 formatter = logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s")
 file_handler.setFormatter(formatter)
@@ -50,7 +51,6 @@ file_handler.setFormatter(formatter)
 app.logger.setLevel(logging.INFO)  # <—— ОБЯЗАТЕЛЬНО
 app.logger.addHandler(file_handler)
 app.logger.propagate = False       # <—— чтобы избежать дублирования
-
 
 # Отключаем лишние логи Flask/Werkzeug
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
@@ -163,7 +163,7 @@ def login():
                 )
                 login_user(user_obj)
                 app.logger.info(f"[LOGIN] Пользователь '{user_record['username']}' вошёл в систему")
-  # теперь используем login_user из flask_login
+                # теперь используем login_user из flask_login
                 return redirect(url_for("dashboard"))
         else:
             return render_template("login.html", error="Неверный логин или пароль")
@@ -177,7 +177,6 @@ def logout():
     logout_user()
     app.logger.info(f"[LOGOUT] Пользователь '{username}' вышел из системы")
     return redirect(url_for("login"))
-
 
 
 # -------------- Главная страница ("/") --------------
@@ -211,7 +210,8 @@ def dashboard():
                 daemon=True
             ).start()
 
-        app.logger.info(f"[CONNECT] Пользователь '{current_user.username}' подключился к серверу {server_ip}:{server_port}")
+        app.logger.info(
+            f"[CONNECT] Пользователь '{current_user.username}' подключился к серверу {server_ip}:{server_port}")
         return render_template("index.html",
                                message=user_connections[user_id]["status"],
                                status=user_connections[user_id],
@@ -251,14 +251,13 @@ def connect_existing_server():
 
         threading.Thread(
             target=collect_metrics,
-            args=(s["ip"], s["port"], s["ssh_user"], s["ssh_password"], user_connections[user_id], tg_username, user_id),
+            args=(
+            s["ip"], s["port"], s["ssh_user"], s["ssh_password"], user_connections[user_id], tg_username, user_id),
             daemon=True
         ).start()
-        app.logger.info(f"[CONNECT] Пользователь '{current_user.username}' подключился к сохранённому серверу {s['ip']}:{s['port']}")
+        app.logger.info(
+            f"[CONNECT] Пользователь '{current_user.username}' подключился к сохранённому серверу {s['ip']}:{s['port']}")
     return redirect(url_for("dashboard"))
-
-
-
 
 
 def get_user_servers():
@@ -310,9 +309,6 @@ def get_data():
     }
 
     return jsonify({"metrics": metrics, "status": connection_status})
-
-
-
 
 
 # -------------- Telegram, 2FA --------------
@@ -416,7 +412,8 @@ def twofa_setup():
         elif action == "disable":
             database.set_twofa_enabled(current_user.id, False)
             send_telegram_alert(user["telegram_username"], "2FA выключена.")
-        app.logger.info(f"[2FA] Пользователь '{current_user.username}' {'включил' if action == 'enable' else 'отключил'} двухфакторную аутентификацию")
+        app.logger.info(
+            f"[2FA] Пользователь '{current_user.username}' {'включил' if action == 'enable' else 'отключил'} двухфакторную аутентификацию")
         return redirect(url_for("twofa_setup"))
     return render_template("twofa_setup.html",
                            error=None,
@@ -542,55 +539,55 @@ def report():
         tx_errs = [r[12] for r in rows if r[12] is not None]
         powers = [r[13] for r in rows if r[13] is not None]
 
-        cpu_avg = sum(cpus)/len(cpus) if cpus else None
+        cpu_avg = sum(cpus) / len(cpus) if cpus else None
         cpu_min = min(cpus) if cpus else None
         cpu_max = max(cpus) if cpus else None
 
-        ram_avg = sum(rams)/len(rams) if rams else None
+        ram_avg = sum(rams) / len(rams) if rams else None
         ram_min = min(rams) if rams else None
         ram_max = max(rams) if rams else None
 
-        disk_avg = sum(disks)/len(disks) if disks else None
+        disk_avg = sum(disks) / len(disks) if disks else None
         disk_min = min(disks) if disks else None
         disk_max = max(disks) if disks else None
 
-        users_avg = sum(users_)/len(users_) if users_ else None
+        users_avg = sum(users_) / len(users_) if users_ else None
         users_min = min(users_) if users_ else None
         users_max = max(users_) if users_ else None
 
-        temp_avg = sum(temps)/len(temps) if temps else None
+        temp_avg = sum(temps) / len(temps) if temps else None
         temp_min = min(temps) if temps else None
         temp_max = max(temps) if temps else None
 
-        net_rx_avg = sum(net_rxs)/len(net_rxs) if net_rxs else None
+        net_rx_avg = sum(net_rxs) / len(net_rxs) if net_rxs else None
         net_rx_min = min(net_rxs) if net_rxs else None
         net_rx_max = max(net_rxs) if net_rxs else None
 
-        net_tx_avg = sum(net_txs)/len(net_txs) if net_txs else None
+        net_tx_avg = sum(net_txs) / len(net_txs) if net_txs else None
         net_tx_min = min(net_txs) if net_txs else None
         net_tx_max = max(net_txs) if net_txs else None
 
-        swap_avg = sum(swaps)/len(swaps) if swaps else None
+        swap_avg = sum(swaps) / len(swaps) if swaps else None
         swap_min = min(swaps) if swaps else None
         swap_max = max(swaps) if swaps else None
 
-        procs_avg = sum(procs)/len(procs) if procs else None
+        procs_avg = sum(procs) / len(procs) if procs else None
         procs_min = min(procs) if procs else None
         procs_max = max(procs) if procs else None
 
-        threads_avg = sum(threads)/len(threads) if threads else None
+        threads_avg = sum(threads) / len(threads) if threads else None
         threads_min = min(threads) if threads else None
         threads_max = max(threads) if threads else None
 
-        rx_err_avg = sum(rx_errs)/len(rx_errs) if rx_errs else None
+        rx_err_avg = sum(rx_errs) / len(rx_errs) if rx_errs else None
         rx_err_min = min(rx_errs) if rx_errs else None
         rx_err_max = max(rx_errs) if rx_errs else None
 
-        tx_err_avg = sum(tx_errs)/len(tx_errs) if tx_errs else None
+        tx_err_avg = sum(tx_errs) / len(tx_errs) if tx_errs else None
         tx_err_min = min(tx_errs) if tx_errs else None
         tx_err_max = max(tx_errs) if tx_errs else None
 
-        power_avg = sum(powers)/len(powers) if powers else None
+        power_avg = sum(powers) / len(powers) if powers else None
         power_min = min(powers) if powers else None
         power_max = max(powers) if powers else None
 
@@ -612,14 +609,14 @@ def report():
                                swap_avg=fmt(swap_avg), swap_min=fmt(swap_min), swap_max=fmt(swap_max),
                                latest_uptime=latest_uptime,
                                procs_avg=fmt(procs_avg, 0), procs_min=fmt(procs_min, 0), procs_max=fmt(procs_max, 0),
-                               threads_avg=fmt(threads_avg, 0), threads_min=fmt(threads_min, 0), threads_max=fmt(threads_max, 0),
+                               threads_avg=fmt(threads_avg, 0), threads_min=fmt(threads_min, 0),
+                               threads_max=fmt(threads_max, 0),
                                rx_err_avg=fmt(rx_err_avg), rx_err_min=fmt(rx_err_min), rx_err_max=fmt(rx_err_max),
                                tx_err_avg=fmt(tx_err_avg), tx_err_min=fmt(tx_err_min), tx_err_max=fmt(tx_err_max),
                                power_avg=fmt(power_avg), power_min=fmt(power_min), power_max=fmt(power_max)
                                )
     except Exception as e:
         return f"Ошибка при формировании отчёта: {str(e)}"
-
 
 
 # -------------- Экспорт CSV --------------
@@ -647,7 +644,6 @@ def export_data():
         as_attachment=True,
         download_name="metrics_export.csv"
     )
-    
 
 
 # -------------- Динамический дашборд --------------
@@ -688,7 +684,6 @@ def disconnect():
     return redirect(url_for("dashboard_custom"))
 
 
-
 # ------------ Вспомогательное -----------
 
 def generate_2fa_code():
@@ -719,7 +714,7 @@ def logs():
 @login_required
 def admin_panel():
     if current_user.role != "admin":
-        return "Недостаточно прав для доступа к админ-панели", 403
+        return "Недостаточно прав", 403
 
     logs = []
     log_files = sorted(
@@ -734,13 +729,14 @@ def admin_panel():
         except:
             pass
 
-    # Оставляем последние 500 строк, самые новые сверху
-    logs = logs[-500:][::-1]
-
-    user_list = database.get_all_users()
-    return render_template("admin_panel.html", users=user_list, logs="".join(logs))
+    logs = logs[-500:][::-1]  # свежие сверху
+    users = database.get_all_users()
+    return render_template("admin_panel.html", users=users, logs="".join(logs))
 
 @app.errorhandler(Exception)
 def handle_global_exception(e):
+    if request.path == "/favicon.ico":
+        return "", 204  # Не логируем favicon и отдаём пусто
     app.logger.error(f"[ERROR] Критическая ошибка: {str(e)}")
     return render_template("404.html"), 500
+
