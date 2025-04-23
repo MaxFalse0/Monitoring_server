@@ -33,7 +33,7 @@ app = Flask(__name__)
 app.secret_key = "supersecretkey"
 csrf = CSRFProtect(app)
 socketio.init_app(app, cors_allowed_origins="*")  # или SOCKETIO_CORS_ALLOWED_ORIGINS
-
+user_connections = {}
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -44,9 +44,16 @@ if not os.path.exists("app.log"):
 
 file_handler = RotatingFileHandler("app.log", maxBytes=100000, backupCount=10)
 file_handler.setLevel(logging.INFO)
-formatter = logging.Formatter("[%(asctime)s] %(levelname)s in %(module)s: %(message)s")
+formatter = logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s")
 file_handler.setFormatter(formatter)
+
+app.logger.setLevel(logging.INFO)  # <—— ОБЯЗАТЕЛЬНО
 app.logger.addHandler(file_handler)
+app.logger.propagate = False       # <—— чтобы избежать дублирования
+
+
+# Отключаем лишние логи Flask/Werkzeug
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 
 @login_manager.user_loader
@@ -154,7 +161,9 @@ def login():
                     user_record["twofa_enabled"],
                     user_record["role"]
                 )
-                login_user(user_obj)  # теперь используем login_user из flask_login
+                login_user(user_obj)
+                app.logger.info(f"[LOGIN] Пользователь '{user_record['username']}' вошёл в систему")
+  # теперь используем login_user из flask_login
                 return redirect(url_for("dashboard"))
         else:
             return render_template("login.html", error="Неверный логин или пароль")
@@ -164,17 +173,23 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
+    username = current_user.username
     logout_user()
+    app.logger.info(f"[LOGOUT] Пользователь '{username}' вышел из системы")
     return redirect(url_for("login"))
+
 
 
 # -------------- Главная страница ("/") --------------
 
+user_connections = {}  # глобальный словарь для статусов по user_id
+
+
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def dashboard():
-    global connection_status
     user_id = current_user.id
+    tg_username = current_user.telegram_username
 
     if request.method == "POST":
         server_ip = request.form["server_ip"]
@@ -182,63 +197,68 @@ def dashboard():
         ssh_user = request.form["username"]
         ssh_password = request.form["password"]
 
-        connection_status["status"] = "Подключаемся к серверу..."
-        connection_status["error"] = None
+        if user_id not in user_connections or not user_connections[user_id].get("active", False):
+            user_connections[user_id] = {
+                "status": "Подключаемся к серверу...",
+                "error": None,
+                "server": f"{server_ip}:{server_port}",
+                "active": True
+            }
 
-        tg_username = current_user.telegram_username
+            threading.Thread(
+                target=collect_metrics,
+                args=(server_ip, server_port, ssh_user, ssh_password, user_connections[user_id], tg_username, user_id),
+                daemon=True
+            ).start()
 
-        # Запускаем сбор метрик в фоновом потоке (бесконечно, пока не нажмут "отключить")
-        threading.Thread(
-            target=collect_metrics,
-            args=(server_ip, server_port, ssh_user, ssh_password, connection_status, tg_username, user_id),
-            daemon=True
-        ).start()
-
+        app.logger.info(f"[CONNECT] Пользователь '{current_user.username}' подключился к серверу {server_ip}:{server_port}")
         return render_template("index.html",
-                               message=connection_status["status"],
-                               status=connection_status,
+                               message=user_connections[user_id]["status"],
+                               status=user_connections[user_id],
                                servers=get_user_servers())
-    else:
-        return render_template("index.html",
-                               message="Введите данные сервера или выберите из списка",
-                               status=connection_status,
-                               servers=get_user_servers())
+
+    connection_status = user_connections.get(user_id, {
+        "status": "Не подключено",
+        "error": None,
+        "server": None,
+        "active": False
+    })
+    return render_template("index.html",
+                           message=connection_status["status"],
+                           status=connection_status,
+                           servers=get_user_servers())
 
 
 @app.route("/connect_existing_server", methods=["POST"])
 @login_required
 def connect_existing_server():
-    """
-    Вызывается при выборе сервера из списка (index.html).
-    Используем сохранённые данные (ip,port и т.д.) и запускаем collect_metrics.
-    """
-    global connection_status
     user_id = current_user.id
     user_role = current_user.role
     server_id = request.form.get("server_id")
-
-    if not server_id:
-        return redirect(url_for("dashboard"))
+    tg_username = current_user.telegram_username
 
     s = get_server_by_id(server_id)
-    if not s:
+    if not s or (user_role != "admin" and s["user_id"] != user_id):
         return redirect(url_for("dashboard"))
 
-    if user_role != "admin" and s["user_id"] != user_id:
-        return "Недостаточно прав для подключения к этому серверу"
+    if user_id not in user_connections or not user_connections[user_id].get("active", False):
+        user_connections[user_id] = {
+            "status": "Подключаемся к выбранному серверу...",
+            "error": None,
+            "server": f"{s['ip']}:{s['port']}",
+            "active": True
+        }
 
-    connection_status["status"] = "Connecting to existing server..."
-    connection_status["error"] = None
-
-    tg_username = current_user.telegram_username
-    # Здесь можно оставить запуск через отдельный поток, если не хотите переключаться полностью на Celery:
-    threading.Thread(
-        target=collect_metrics,
-        args=(s["ip"], s["port"], s["ssh_user"], s["ssh_password"], connection_status, tg_username, user_id),
-        daemon=True
-    ).start()
-
+        threading.Thread(
+            target=collect_metrics,
+            args=(s["ip"], s["port"], s["ssh_user"], s["ssh_password"], user_connections[user_id], tg_username, user_id),
+            daemon=True
+        ).start()
+        app.logger.info(f"[CONNECT] Пользователь '{current_user.username}' подключился к сохранённому серверу {s['ip']}:{s['port']}")
     return redirect(url_for("dashboard"))
+
+
+
 
 
 def get_user_servers():
@@ -260,6 +280,14 @@ def get_data():
     user_id = current_user.id
     user_role = current_user.role
     latest = database.get_latest_metrics(user_id, user_role)
+
+    # Получаем connection_status именно для этого пользователя
+    connection_status = user_connections.get(user_id, {
+        "status": "Не подключено",
+        "error": None,
+        "server": None,
+        "active": False
+    })
 
     if not latest:
         return jsonify({"metrics": {}, "status": connection_status})
@@ -284,6 +312,9 @@ def get_data():
     return jsonify({"metrics": metrics, "status": connection_status})
 
 
+
+
+
 # -------------- Telegram, 2FA --------------
 
 @app.route("/tg_connect", methods=["GET", "POST"])
@@ -299,10 +330,9 @@ def tg_connect():
             return render_template("tg_connect.html", current_tg=user["telegram_username"],
                                    error="Введите только числовой Telegram ID (chat_id).")
         database.update_user_telegram(current_user.id, new_tg)
-        # Обычно current_user не обновляется автоматически, поэтому можно обновить и сессию или перезагрузить объект пользователя.
-        # Здесь для простоты – обновим session.
         session["telegram_username"] = new_tg
         send_telegram_alert(new_tg, "✅ Вы успешно подключили Telegram-бота!")
+        app.logger.info(f"[2FA] Пользователь '{current_user.username}' привязал Telegram (chat_id={new_tg})")
         return redirect(url_for("tg_connect"))
 
     return render_template("tg_connect.html",
@@ -386,6 +416,7 @@ def twofa_setup():
         elif action == "disable":
             database.set_twofa_enabled(current_user.id, False)
             send_telegram_alert(user["telegram_username"], "2FA выключена.")
+        app.logger.info(f"[2FA] Пользователь '{current_user.username}' {'включил' if action == 'enable' else 'отключил'} двухфакторную аутентификацию")
         return redirect(url_for("twofa_setup"))
     return render_template("twofa_setup.html",
                            error=None,
@@ -431,6 +462,7 @@ def servers_list():
         ssh_user = request.form["ssh_user"]
         ssh_password = request.form["ssh_password"]
         database.create_server(user_id, name, ip, port, ssh_user, ssh_password)
+        app.logger.info(f"[SERVER ADD] Пользователь '{current_user.username}' добавил сервер {name} ({ip}:{port})")
         return redirect(url_for("servers_list"))
 
     servers = database.get_servers_for_user(user_id, role)
@@ -456,7 +488,7 @@ def servers_edit(server_id):
         ssh_password = request.form["ssh_password"]
         database.update_server(server_id, name, ip, port, ssh_user, ssh_password)
         return redirect(url_for("servers_list"))
-
+    app.logger.info(f"[SERVER EDIT] Пользователь '{current_user.username}' обновил сервер ID={server_id}")
     return render_template("servers_edit.html", server=s)
 
 
@@ -471,6 +503,7 @@ def servers_delete(server_id):
     if role != "admin" and s["user_id"] != user_id:
         return "Недостаточно прав"
     database.delete_server(server_id)
+    app.logger.info(f"[SERVER DELETE] Пользователь '{current_user.username}' удалил сервер ID={server_id}")
     return redirect(url_for("servers_list"))
 
 
@@ -494,7 +527,6 @@ def report():
         if not rows:
             return render_template("report.html", days=days)
 
-        # Старые метрики
         cpus = [r[0] for r in rows if r[0] is not None]
         rams = [r[1] for r in rows if r[1] is not None]
         disks = [r[2] for r in rows if r[2] is not None]
@@ -502,8 +534,6 @@ def report():
         temps = [r[4] for r in rows if r[4] is not None]
         net_rxs = [r[5] for r in rows if r[5] is not None]
         net_txs = [r[6] for r in rows if r[6] is not None]
-
-        # Новые метрики
         swaps = [r[7] for r in rows if r[7] is not None]
         latest_uptime = rows[-1][8]
         procs = [r[9] for r in rows if r[9] is not None]
@@ -512,7 +542,6 @@ def report():
         tx_errs = [r[12] for r in rows if r[12] is not None]
         powers = [r[13] for r in rows if r[13] is not None]
 
-        # Вычисление статистики
         cpu_avg = sum(cpus)/len(cpus) if cpus else None
         cpu_min = min(cpus) if cpus else None
         cpu_max = max(cpus) if cpus else None
@@ -611,12 +640,14 @@ def export_data():
     for row in rows:
         writer.writerow(row)
     output.seek(0)
+    app.logger.info(f"[EXPORT] Пользователь '{current_user.username}' экспортировал CSV-файл метрик")
     return send_file(
         io.BytesIO(output.getvalue().encode()),
         mimetype="text/csv",
         as_attachment=True,
         download_name="metrics_export.csv"
     )
+    
 
 
 # -------------- Динамический дашборд --------------
@@ -645,12 +676,17 @@ def on_connect():
 
 
 @app.route("/disconnect")
+@login_required
 def disconnect():
-    from server_monitoring.config import connection_status
-    connection_status["active"] = False  # остановит поток
-    connection_status["status"] = "Отключено"
-    connection_status["error"] = None
+    user_id = current_user.id
+    if user_id in user_connections:
+        user_connections[user_id]["active"] = False
+        user_connections[user_id]["status"] = "Отключено"
+        user_connections[user_id]["server"] = None
+        user_connections[user_id]["error"] = None
+    app.logger.info(f"[DISCONNECT] Пользователь '{current_user.username}' отключился от сервера")
     return redirect(url_for("dashboard_custom"))
+
 
 
 # ------------ Вспомогательное -----------
@@ -669,7 +705,6 @@ def page_not_found(e):
 @app.route("/logs")
 @login_required
 def logs():
-    # Только администратор может просматривать журнал логов
     if current_user.role != "admin":
         return "Недостаточно прав для просмотра журнала логов", 403
     try:
@@ -686,17 +721,26 @@ def admin_panel():
     if current_user.role != "admin":
         return "Недостаточно прав для доступа к админ-панели", 403
 
-    if os.path.exists("app.log"):
-        with open("app.log", "r", encoding="utf-8") as f:
-            logs = f.readlines()[-500:]
-    else:
-        logs = []
+    logs = []
+    log_files = sorted(
+        [f for f in os.listdir() if f.startswith("app.log")],
+        reverse=True
+    )
+
+    for log_file in log_files:
+        try:
+            with open(log_file, "r", encoding="utf-8") as f:
+                logs.extend(f.readlines())
+        except:
+            pass
+
+    # Оставляем последние 500 строк, самые новые сверху
+    logs = logs[-500:][::-1]
 
     user_list = database.get_all_users()
     return render_template("admin_panel.html", users=user_list, logs="".join(logs))
 
-
-@app.errorhandler(BrokenPipeError)
-def handle_broken_pipe_error(error):
-    app.logger.error("Broken pipe error: %s", error)
-    return "", 204
+@app.errorhandler(Exception)
+def handle_global_exception(e):
+    app.logger.error(f"[ERROR] Критическая ошибка: {str(e)}")
+    return render_template("404.html"), 500
