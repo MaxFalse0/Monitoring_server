@@ -1,12 +1,83 @@
-@app.route("/logs")
-@login_required
-def logs():
-    # Только администратор может просматривать журнал логов
-    if current_user.role != "admin":
-        return "Недостаточно прав для просмотра журнала логов", 403
-    try:
-        with open("app.log", "r", encoding="utf-8") as f:
-            log_content = f.read()
-    except Exception as e:
-        log_content = f"Ошибка чтения журнала логов: {str(e)}"
-    return render_template("logs.html", log_content=log_content)
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Журнал логов</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <meta http-equiv="refresh" content="10"> <!-- автообновление -->
+    <style>
+        body {
+            background-color: #1e1f23;
+            color: #fff;
+            font-family: monospace;
+            padding: 20px;
+        }
+        .log-container {
+            background-color: #2b2d31;
+            padding: 20px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 0 10px #00000055;
+        }
+        .log-line {
+            margin-bottom: 4px;
+        }
+        .log-line.INFO { color: #00ffcc; }
+        .log-line.ERROR { color: #ff4444; font-weight: bold; }
+        .log-line.CONNECT { color: #44ff44; }
+        .log-line.DISCONNECT { color: #ffa500; }
+        .log-line.LOGIN, .log-line.LOGOUT { color: #99bbff; }
+        .log-line.EXPORT, .log-line.SERVER { color: #cccc00; }
+
+        .log-time {
+            color: #888;
+            margin-right: 8px;
+        }
+        .log-text {
+            color: inherit;
+        }
+
+        .btn-refresh {
+            margin-bottom: 15px;
+            padding: 10px 20px;
+            background-color: #3a3f47;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn-refresh:hover {
+            background-color: #505560;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Журнал логов</h2>
+
+<form method="get" action="{{ url_for('logs') }}">
+    <button class="btn-refresh" type="submit">Обновить журнал</button>
+</form>
+
+<div class="log-container">
+    {% for line in log_content.split('\n') if line %}
+        <div class="log-line
+            {% if '[ERROR]' in line %}ERROR
+            {% elif '[CONNECT]' in line %}CONNECT
+            {% elif '[DISCONNECT]' in line %}DISCONNECT
+            {% elif '[LOGIN]' in line or '[LOGOUT]' in line %}LOGIN
+            {% elif '[EXPORT]' in line %}EXPORT
+            {% elif '[SERVER' in line %}SERVER
+            {% else %}INFO
+            {% endif %}
+        ">
+            <span class="log-time">{{ line[:26] }}</span>
+            <span class="log-text">{{ line[27:] }}</span>
+        </div>
+    {% endfor %}
+</div>
+
+</body>
+</html>
