@@ -4,7 +4,6 @@ from server_monitoring.config import THRESHOLDS, TELEGRAM_BOT_TOKEN, AUTOHEAL_CP
 import os
 import json
 
-
 # Дополнительные пороги
 USER_THRESHOLD = 50
 TEMP_THRESHOLD = 75
@@ -47,6 +46,7 @@ def check_alerts(cpu, ram, disk, telegram_username=None, users=None, temp=None, 
 
 
 MAP_PATH = "user_map.json"
+
 
 def send_telegram_alert(user, message):
     print(f"[DEBUG] Пытаюсь отправить сообщение: {message} → {user}")
