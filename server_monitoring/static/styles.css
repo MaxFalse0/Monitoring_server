@@ -488,3 +488,16 @@ body {
     color: var(--accent);
     text-decoration: none;
 }
+.log-line.INFO { color: #00ffcc; }
+.log-line.ERROR { color: #ff4444; font-weight: bold; }
+.log-line.CONNECT { color: #44ff44; }
+.log-line.DISCONNECT { color: #ffa500; }
+.log-line.LOGIN, .log-line.LOGOUT { color: #99bbff; }
+.log-line.EXPORT, .log-line.SERVER { color: #cccc00; }
+.log-time {
+    color: #888;
+    margin-right: 8px;
+}
+.log-text {
+    color: inherit;
+}
