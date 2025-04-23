@@ -223,7 +223,8 @@ def collect_metrics(server_ip, port, ssh_user, ssh_password, status_dict, tg_use
                 disk=metrics["disk"],
                 telegram_username=tg_username,
                 users=metrics["users"],
-                temp=metrics["temp"]
+                temp=metrics["temp"],
+                server_ip=server_ip
             )
 
             status_dict["status"] = "Сервер подключён и данные собираются"
